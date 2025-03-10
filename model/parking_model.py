@@ -81,7 +81,9 @@ class ParkingModelReal(nn.Module):
 
         return bev_feature, pred_depth, bev_target
 
-    def get_target_bev(self, target_point, mode):
+    def get_target_bev(self
+
+                       , target_point, mode):
         h, w = (int((self.cfg.bev_y_bound[1] - self.cfg.bev_y_bound[0]) / self.cfg.bev_y_bound[2]),
                 int((self.cfg.bev_x_bound[1] - self.cfg.bev_x_bound[0]) / self.cfg.bev_x_bound[2]))
         b = self.cfg.batch_size if mode == "train" else 1

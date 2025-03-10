@@ -1,0 +1,134 @@
+common:
+  num_processes: 12 # 12
+  save_to_niofs: True
+  only_data_balance: False
+
+data:
+  tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
+  tfrecord_files_list: "/share-pnc/xiaodong.ma/data/scene_eval/expert_test/0305_all.txt" # same_navi_1217_4w: 143297340
+  local_data_save_dir: "/share-pnc/xiaodong.ma/data/scene_eval/expert_test/"
+  use_local_cache: False
+  data_version: "0305_all"
+  mode_list: ["train", "test", "validate"]
+  # mode_list: ["test"]
+  # 训练，测试，验证，分割比率
+  pct_train: 0.8
+  pct_test: 0.15
+  pct_val: 0.05
+  # 构造完 constructed data 后，保存case的频率
+  save_case_num_per: 30
+  label_match_mode: False
+  # NOTE 本地debug case，如果处理niofs数据，则注释下两行
+  # local_debug_case_path: /home/xiaodong.ma/scene_evaluator/0b45f96e01bc515f9b91e5ea12d5f301.tfrecord
+  # local_case_id: 0b45f96e01bc515f9b91e5ea12d5f301
+
+niofs:
+  bucket: ad-cn-hfidc-pnc-data3
+  access_key: 8fd6a2c297574ba8
+  secret_key: a6089ccf0e85449a92c6f1b70dec79d3
+  niofs_data_save_dir: regressions-training/vn_data/
+
+tf_parser:
+  null
+
+tag_maker:
+  test: null
+
+scene_filter:
+  # 过滤场景数小于 scene_num_threshold 的帧
+  scene_num_threshold: 3
+  filter_no_gt: True
+  use_scene: [gt, fs] # gt, fs, gen
+  lane_change_trigger_type: ["OVERTAKE"]
+
+constructor: 
+  need_sort_scene: False
+  selected_scene_num_threshold: 3
+  use_fs_replace_gt_field: scene_values
+  # 最大场景帧数
+  build_max_pairs: 9 # 8 + 1
+  diff_label_value_threshold: 0.3
+
+data_balance:
+  used_tags: [
+    behavior_category,
+    # ego_gt_avg_speed
+  ]
+  save_data_version: "1231_data_2w_balance_by_refline"
+  load_from_niofs: False
+  save_frame_nums_per: 512  # 128 # 256, 512
+  proportion_of_keep_lc: 2
+  # data_mode_list: [eval]
+  sample_frac: 1.0
+  shuffle_pkl_num_per: 8
+  shuffle_num: 10
+  # data balance 的 进程数通常比 data process 的数量多
+  num_processes: 16
+
+# NOTE data analysis 的配置参数
+analysis:
+  is_balanced: True # 值为 False 时，分析的是 balance 前的数据
+  fig_save_dir: "/home/xiaodong.ma/scene_evaluator/"
+  # sample_file_frac: 0.1
+  sample_frame_num: 10000 # 10000 # 100000
+  need_draw_feas: 
+    # NOTE Features
+    # fs_scenes_traj_info:
+    #   fig_num: 32 # 8 * 4
+    # fs_scenes_attribute:
+    #   fig_num: 12 # 6 * 2
+    lat_lon_distance_gt_2_fs:
+      fig_num: 4 # 2 + 2
+    vector_graph_feature:
+      fig_num: 9
+    navi_debug:
+      fig_num: 1
+    navi_feature:
+      fig_num: 3
+    vector_route_navi_feature:
+      fig_num: 3
+
+    # NOTE Tags
+    fs_scene_num:
+      fig_num: 2
+    ego_lat_traj_diff_between_frame:
+      fig_num: 1
+    behavior_category:
+      fig_num: 4
+    behavior_category_by_ref_line:
+      fig_num: 2
+    behavior_category_by_ref_path:
+      fig_num: 2
+    # pos_neg_scene_num:
+    #   fig_num: 2
+
+    # NOTE Labels
+    traj_similarity_values:
+      fig_num: 1
+    scene_values: 
+      fig_num: 2
+    is_valid_scene:
+      fig_num: 2
+    fs_reward:
+      fig_num: 1
+    # lane_map_navi_info_feature: 
+    #   fig_num: 3
+    navi_lanenr: 
+      fig_num: 7
+    scenes_costs:
+      fig_num: 7
+
+  data_mode_list: [train]
+
+# NOTE data visualze 的配置参数
+visualizer:
+  file_type: tf_record # tf_record # pkl
+  max_num_scene_in_pair: 9
+  data_mode_list: train
+  # infer | dump
+  task_mode: dump # infer 
+
+scene_select:
+  file_path: /share-pnc/xiaodong.ma/data/scene_eval/expert_test/validate_1204.list
+  condition:
+    lane_change_trigger_type: ["OVERTAKE"]

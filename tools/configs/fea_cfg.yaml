@@ -1,0 +1,275 @@
+common:
+  max_agent_num: 12 # 32
+  max_virtual_env_num: 32
+  max_history_time_num: 14
+  max_future_time_num: 35
+  max_lane_num: 50
+  max_node_num_per_lane: 25
+  # max_navi_lanenr: 3
+  # max_navi_lanenr_lane_num: 10
+  # max_lane_map_navi_info_feature_lane_num: 10 
+
+features:
+  # candidate evaluation trajs
+  fs_scenes_traj_info:
+    has_scene_dim: True
+    fea_dim: [
+      "scene_name", 
+      "agt_id",
+      "x",
+      "y",
+      "heading",
+      "v",
+      "acc",
+      "time_stamp"
+    ]
+
+  fs_scenes_attribute:
+    has_scene_dim: True
+    fea_dim: [
+      "agt_id",
+      "length",
+      "width",
+      "type",
+      "is_virtual",
+      "key_smooth_future", # 未来轨迹长度
+    ]
+
+  agent_feature:
+    has_scene_dim: False
+    fea_dim: [
+      "scene_name", 
+      "agt_id",
+      "x",
+      "y",
+      "heading",
+      "v",
+      "acc",
+      "time_stamp"
+    ]
+
+  agent_attribute_feature:
+    has_scene_dim: False
+    fea_dim: [
+      "agt_id",
+      "length",
+      "width",
+      "type",
+      "is_virtual",
+      "key_size",
+    ]
+
+  behavior_category:
+    has_scene_dim: True
+    fea_dim: [
+      lat,
+      lon,
+    ]
+
+  behavior_category_by_ref_line:
+    has_scene_dim: True
+    fea_dim: [
+      lat,
+      lon,
+    ]
+
+  behavior_category_by_ref_path:
+    has_scene_dim: True
+    fea_dim: [
+      lat,
+      lon,
+    ]
+
+  lat_lon_distance_gt_2_fs:
+    has_scene_dim: True
+    fea_dim: [
+      lat,
+      lon
+    ]
+
+  # 5s轨迹的横纵距离diff
+  lat_lon_distance_gt_2_fs_by_ref_path:
+    has_scene_dim: True
+    fea_dim: [
+      lat,
+      lon
+    ]
+
+  traj_similarity_values:
+    has_scene_dim: True
+
+  ref_path_info:
+    has_scene_dim: True
+    fea_dim: [
+      x,
+      y,
+      heading
+    ]
+
+  ref_line_info:
+    has_scene_dim: True
+    fea_dim: [
+      x,
+      y,
+      heading
+    ]
+
+  # map info
+  vector_graph_feature:
+    has_scene_dim: False
+    fea_dim: [
+      start_x,
+      start_y,
+      end_x,
+      end_y,
+      lane_id, # no use
+      lane_width,
+      left_cross_able, # no use
+      right_cross_able, # no use
+      speed_limit,
+      # polyline_index,
+      # vector_index,
+    ]
+
+  # 将 travel prob 信息绑定到 map lanes 上
+  vector_route_navi_feature:
+    has_scene_dim: False
+    fea_dim: [
+      travel_prob,
+      dist_to_lane_guide, 
+      priority, # 自车到不偏航车道的换道次数
+    ]
+    shape: [50, 3]
+  
+  node_mask:
+    has_scene_dim: False
+
+  line_mask: 
+    has_scene_dim: False
+
+  fs_reward:
+    has_scene_dim: True
+
+  lane_change_trigger_type:
+    has_scene_dim: False
+
+  is_valid_scene:
+    has_scene_dim: True
+  
+  agent_mask:
+    has_scene_dim: True
+  time_mask:
+    has_scene_dim: True
+
+  scene_values:
+    has_scene_dim: True
+    # fea_dim: [
+    #   lat,
+    #   lon
+    # ]
+  scene_values_latlon_split:
+    has_scene_dim: True
+    fea_dim: [
+      lat,
+      lon
+    ]
+  
+  env_label_info:
+    has_scene_dim: False
+    fea_dim: [
+      next_split_distance,
+      to_intersection_entry_distance,
+      to_intersection_exit_distance,
+      junction_turn_direction,
+      is_in_urban
+    ]
+
+  scenes_costs:
+    has_scene_dim: True
+    fea_dim: [
+      total_cost, # no use
+      efficiency_cost,
+      comfort_cost,
+      safety_cost, 
+      navigation_cost,
+      post_cost, # no use
+      log_safety_cost, # no use
+    ]
+    shape: [8, 6]
+
+  # das traj 或者 astra traj
+  # fs_scenes_source_tag:
+  #   has_scene_dim: True
+
+  # 通行概率 travelable_prob
+  lane_map_navi_info_feature:
+    has_scene_dim: False
+    fea_dim: [
+      is_ego_lane,
+      travellable_prob,
+      distance_to_lane_guide
+    ]
+    shape: [10, 3]
+  
+  lane_map_navi_info_feature_mask:
+    has_scene_dim: False
+
+  # 语义导航
+  navi_lanenr:
+    has_scene_dim: False
+    fea_dim: [
+      turn,
+      is_travelable,  # 高德推荐
+      is_recommended, #  no use
+      dist_to_lane_guide,
+      turn_direction,
+      idx, # no use
+      unknown, # no use
+    ]
+    shape: [3, 10, 7]
+
+  navi_lanenr_mask:
+    has_scene_dim: False
+
+  navi_feature:
+    has_scene_dim: True
+    fea_dim: [
+      travel_prob,
+      dist_to_lane_guide,
+      priority, # 自车到不偏航车道的换道次数
+    ]
+
+  navi_debug:
+    has_scene_dim: True
+    fea_val: [0, 1, 2, 3, 7]
+
+tags:
+  ego_gt_avg_speed:
+    null
+  behavior_category:
+    null
+  fs_scene_num:
+    null
+  gt_scene_num:
+    null
+  ego_lat_traj_diff_between_frame:
+    null
+  fs_agent_num:
+    null
+  gt_agent_num:
+    null
+  lane_change_trigger_type:
+    null
+  no_positive_scene:
+    null
+  pos_neg_scene_num:
+    fea_dim: [
+      pos,
+      neg
+    ]
+
+  # traj_labels: 
+  #   null
+
+  # rule_values:
+  #   null
