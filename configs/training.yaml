@@ -1,0 +1,34 @@
+##################### Dataset Options #####################
+data_dir: '/home/nio/data/e2e_park/'
+training_dir: "train"
+validation_dir: "val"
+
+##################### Basic Options #####################
+data_mode: "topology"
+num_gpus: 1
+cuda_device_index: "0"
+log_root_dir: '/home/nio/log/'
+checkpoint_root_dir: '/home/nio/ckpt/'
+log_every_n_steps: 10
+check_val_every_n_epoch: 5
+epochs: 40
+learning_rate: 0.0001
+weight_decay: 0.00001
+batch_size: 1
+num_workers: 8
+# resume_path: ""
+
+##################### Data Process #####################
+
+##################### Encoder #####################
+
+##################### Target #####################
+add_noise_to_target: True
+target_noise_threshold: 0.5
+
+##################### Decoder #####################
+decoder_method: "transformer"
+tf_de_dim: 256
+tf_de_heads: 4
+tf_de_layers: 4
+tf_de_dropout: 0.05

@@ -10,67 +10,42 @@ from loguru import logger
 
 @dataclass
 class Configuration:
+    # Dataset Options
+    data_dir: str
+    training_dir: str
+    validation_dir: str
+
+    # Basic Options
     data_mode: str
     num_gpus: int
     cuda_device_index: str
-    data_dir: str
     log_root_dir: str
     checkpoint_root_dir: str
     log_every_n_steps: int
     check_val_every_n_epoch: int
-
     epochs: int
     learning_rate: float
     weight_decay: float
     batch_size: int
     num_workers: int
 
-    training_dir: str
-    validation_dir: str
-    autoregressive_points: int
-    item_number: int
-    token_nums: int
-    xy_max: float
-    process_dim: List[int]
+    # Target Options
+    add_noise_to_target: bool
+    target_noise_threshold: float
 
-    use_fuzzy_target: bool
-    bev_encoder_in_channel: int
-
-    bev_x_bound: List[float]
-    bev_y_bound: List[float]
-    bev_z_bound: List[float]
-    d_bound: List[float]
-    final_dim: List[int]
-    bev_down_sample: int
-    backbone: str
-
+    # Decoder Options
+    decoder_method: str
     tf_de_dim: int
     tf_de_heads: int
     tf_de_layers: int
     tf_de_dropout: float
 
-    append_token: int
-    traj_downsample_stride: int
-
-    add_noise_to_target: bool
-    target_noise_threshold: float
-
-    fusion_method: str
-    decoder_method: str
-    query_en_dim: int
-    query_en_heads: int
-    query_en_layers: int
-    query_en_dropout: float
-    query_en_bev_length: int
-    target_range: float
-
+    # Optional extras
     device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     resume_path: str = None
     config_path: str = None
     log_dir: str = None
     checkpoint_dir: str = None
-    use_depth_distribution: bool = False
-    tf_en_motion_length: str = None
 
 
 @dataclass
@@ -84,6 +59,7 @@ class InferenceConfiguration:
     progress_threshold: float
 
     train_meta_config: Configuration = None
+
 
 def get_train_config_obj(config_path: str):
     exp_name = get_exp_name()
@@ -105,6 +81,7 @@ def get_exp_name():
                                            today.hour, today.minute, today.second)
     exp_name = "exp_{}".format(today_str)
     return exp_name
+
 
 def get_inference_config_obj(config_path: str):
     with open(config_path, 'r') as yaml_file:
