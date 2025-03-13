@@ -1,0 +1,3 @@
+##################### Dataset Options #####################
+data_dir: '/home/nio/Downloads/data/home/shaoqian.li/data0305_all/constructed/train'
+tar_dir: '/home/nio/data/e2e_park/train'
