@@ -5,12 +5,13 @@ from typing import List
 from sympy import limit
 
 from utils.common import get_json_content
-from utils.pose_utils import CustomizePose
+# from utils.pose_utils import CustomizePose
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
 import torch
+import yaml
 
 import numpy as np
 
@@ -161,18 +162,11 @@ class TopologyHistory:
         formatted as (x, y, heading, v, acc).
         """
         # Extract the required columns.
-        # TODO: The frame interval is unstable, varying between 100ms and 200ms.
         # Consider whether to use frame extraction or direct cropping.
         ego_info = ego_history[:, 2:7].copy()
         # Align the starting position of the ego vehicle to (0, 0).
         mask = ~np.any(ego_info[:, :2] == -300, axis=1)
-        ego_info[mask, :2] -= ego_info[-1, :2]
-        # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
-        for col in [0, 1, 3]:
-            ego_info[:, col] = np.where(np.abs(ego_info[:, col]) < 1e-3, 0, ego_info[:, col])
-        # Threshold for [heading, acc]: set values with absolute value < 1e-3 to 0.
-        for col in [2, 4]:
-            ego_info[:, col] = np.where(np.abs(ego_info[:, col]) < 1e-5, 0, ego_info[:, col])
+        ego_info[mask, :2] -= ego_info[0, :2]
 
         self.info["ego_info"] = ego_info
 
@@ -193,7 +187,7 @@ class AgentFeatureParser:
             if key not in feature:
                 raise KeyError(f"Missing required key '{key}' in feature dictionary.")
         # Use the last frame of ego history as the position bias.
-        self.pos_bias = feature['ego_history_feature'][-1, 2:4]
+        self.pos_bias = feature['ego_history_feature'][0, 2:4]
         self.agent = feature['agent_feature']
         self.agent_attribute = feature['agent_attribute_feature']
 
@@ -218,6 +212,11 @@ class AgentFeatureParser:
 
         # 4. Append minimum polygon (bounding box) distance between ego and each agent.
         new_agent_info = self._append_min_polygon_distance(new_agent_info)
+
+        # 5. Remove agents with id == 0 and id col
+        mask_id_not_zero = new_agent_info[:, 0, 0] != 0
+        new_agent_info = new_agent_info[mask_id_not_zero]
+        new_agent_info = new_agent_info[:,:,1:]
 
         # Transpose dimensions from (agent, time, feature) to (time, agent, feature)
         return np.transpose(new_agent_info, (1, 0, 2))
@@ -387,6 +386,7 @@ class TrajectoryInfoParser:
         self.task_index = task_index
         self.task_path = task_path
         self.total_trajectory = 0
+        self.window_size = 10
         self.trajectories = []
         self._get_data()
 
@@ -394,6 +394,109 @@ class TrajectoryInfoParser:
         for each in os.listdir(self.task_path):
             with open(os.path.join(self.task_path, each), 'rb') as f:
                 data = pickle.load(f)
+                data = self._filter_useful_slice(data)
+                if not data:
+                    continue
+
+                # TODO: case_id细分
                 case_id = int(each.replace(".pkl", ""))
-                self.trajectories.append(TopologyHistory(case_id, data))
-                self.total_trajectory += 1
+                ego_history = data['ego_history_feature']
+                agent_feature = data['agent_feature']
+                slice_length = ego_history.shape[0]
+
+                for start_idx in range(slice_length - self.window_size):
+                    end_idx = start_idx + self.window_size + 1
+                    ego_window = ego_history[start_idx:end_idx]
+                    agent_window = agent_feature[:, start_idx:end_idx, :]
+                    self.trajectories.append(TopologyHistory(case_id, {
+                        "ego_history_feature": ego_window,
+                        "agent_feature": agent_window,
+                        "agent_attribute_feature": data["agent_attribute_feature"]},
+                         self.window_size))
+                    self.total_trajectory += 1
+
+    def _filter_useful_slice(self, data: dict) -> dict:
+        """
+            过滤 `ego_history_feature`（自车历史轨迹）和 `agent_feature`（其他交通参与者特征），
+            以获取有用的时间片段并进行处理，包括：
+            1. 提取时间戳间隔较大的数据片段（>0.18s）。
+            2. 过滤短时间间隔的数据，确保数据长度不小于 self.window_size。
+            3. 反转时间顺序，使最新的数据排在前面。
+            4. 过滤自车 x, y, 速度 (v) 以及方向 (heading) 和加速度 (acc) 中的微小数值
+            5. 再次筛选出连续自车移动的片段，确保数据长度不小于 self.window_size，并进行坐标偏移处理。
+
+            返回：
+            - dict: 处理后的 `data` 字典，更新 `ego_history_feature` 和 `agent_feature`。
+            - 没有有效数据时返回{}
+            """
+        ego_history = data['ego_history_feature']
+        slice_start = None
+        slice_end = 0
+        for i in range(ego_history.shape[0] - 1, 0, -1):
+            time_diff = ego_history[i, 7] - ego_history[i - 1, 7]
+            if slice_start is None:
+                if time_diff > 0.18:
+                    slice_start = min(i + 1, ego_history.shape[0] - 1)
+            elif time_diff < 0.18:
+                if slice_start - i >= self.window_size:
+                    slice_end = min(i + 1, ego_history.shape[0] - 1)
+                    break
+                slice_start = None
+
+        if slice_start is None:
+            # raise ValueError("未找到连续的时间戳间隔大于200ms的片段")
+            return {}
+        slice_length = slice_start - slice_end
+        if slice_length < self.window_size:
+            # raise ValueError(f"满足时间戳间隔的子数组不足{self.window_size}个")
+            return {}
+
+        ego_history = ego_history[slice_end : slice_start][::-1]
+
+        new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]),
+                                    fill_value=-300.)
+        for idx in range(len(data['agent_feature'])):
+            new_agent_feature[idx] = data['agent_feature'][idx][slice_end: slice_start][::-1]
+        data['agent_feature'] = new_agent_feature
+
+        # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
+        for col in [2, 3, 5]:
+            ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-3, 0, ego_history[:, col])
+        # Threshold for [heading, acc]: set values with absolute value < 1e-3 to 0.
+        for col in [4, 6]:
+            ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-5, 0, ego_history[:, col])
+
+        slice_start = None
+        slice_end = ego_history.shape[0]
+        for i in range(ego_history.shape[0] - 1):
+            x_diff = ego_history[i + 1, 2] - ego_history[i, 2]
+            if slice_start is None:
+                if x_diff > 1e-3:
+                    slice_start = max(i, 0)
+            elif x_diff < 1e-3:
+                if slice_start - i >= self.window_size:
+                    slice_end = i
+                    break
+                slice_start = None
+
+        if slice_start is None:
+            # raise ValueError("未找到连续自车移动的的片段")
+            return {}
+        slice_length = slice_end - slice_start
+        if slice_length < self.window_size:
+            # raise ValueError(f"满足自车移动的子数组不足{self.window_size}个")
+            return {}
+
+        ego_history = ego_history[slice_start : slice_end]
+        pos_bias = ego_history[0, 2:4].copy()
+        ego_history[:, 2:4] -= pos_bias
+
+        new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]), fill_value=-300.)
+        for idx in range(len(data['agent_feature'])):
+            new_agent_feature[idx] = data['agent_feature'][idx][slice_start : slice_end]
+        new_agent_feature[:, :, 2:4] -= pos_bias
+
+        data['ego_history_feature'] = ego_history
+        data['agent_feature'] = new_agent_feature
+
+        return data
