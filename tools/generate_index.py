@@ -51,79 +51,73 @@ def get_scaled_arcsinh_grid(m_min, m_max, n_min, n_max, m_points, n_points, alph
     return m_boundaries, n_boundaries
 
 
-def create_token_dict_and_centers(m_boundaries, n_boundaries):
+def create_local2token_ndarray(m_boundaries, n_boundaries):
     """
-    Create:
-      1) A 4-level dict: token_dict[x0][x1][y0][y1] = token_id
-      2) A dict mapping token_id -> (center_x, center_y)
+    Build:
+      1) local2token: a 2D ndarray of shape (M, N), where local2token[i, j] = token_id
+      2) token2local: a dict mapping token_id -> [center_x, center_y]
 
     Parameters:
-      m_boundaries: 1D array of boundary values along m-axis
-      n_boundaries: 1D array of boundary values along n-axis
+      m_boundaries (np.ndarray): shape [M+1], sorted x-axis boundaries
+      n_boundaries (np.ndarray): shape [N+1], sorted y-axis boundaries
 
     Returns:
-      token_dict: a nested dictionary (4 levels) mapping boundary quadruples to token_id
-      token_center: a dictionary mapping token_id -> (center_x, center_y)
+      local2token (np.ndarray): shape (M, N), each entry is an integer token_id
+      token2local (dict): {token_id: [center_x, center_y]}
     """
-    token_dict = {}
-    token_center = {}
+    M = len(m_boundaries) - 1
+    N = len(n_boundaries) - 1
+
+    local2token = np.zeros((M, N), dtype=np.int32)
+    token2local = {}
 
     token_id = 0
-    # Loop over each pair of adjacent boundaries on the m-axis
-    for i in range(len(m_boundaries) - 1):
-        # Convert to float16 then to Python float
-        x0 = float(np.float16(m_boundaries[i]))
-        x1 = float(np.float16(m_boundaries[i + 1]))
+    for i in range(M):
+        x0, x1 = m_boundaries[i], m_boundaries[i + 1]
+        for j in range(N):
+            y0, y1 = n_boundaries[j], n_boundaries[j + 1]
 
-        # Ensure the nested dict structure exists
-        if x0 not in token_dict:
-            token_dict[x0] = {}
-        if x1 not in token_dict[x0]:
-            token_dict[x0][x1] = {}
+            # get token_id
+            local2token[i, j] = token_id
 
-        # Loop over each pair of adjacent boundaries on the n-axis
-        for j in range(len(n_boundaries) - 1):
-            y0 = float(np.float16(n_boundaries[j]))
-            y1 = float(np.float16(n_boundaries[j + 1]))
-
-            # Ensure deeper nested structure
-            if y0 not in token_dict[x0][x1]:
-                token_dict[x0][x1][y0] = {}
-
-            # Assign the final level to token_id
-            token_dict[x0][x1][y0][y1] = token_id
-
-            # Compute center of the box
-            center_x = (x0 + x1) / 2.0
-            center_y = (y0 + y1) / 2.0
-
-            # Store the center in a separate dict keyed by token_id
-            token_center[token_id] = (center_x, center_y)
+            # cal center
+            cx = (x0 + x1) / 2.0
+            cy = (y0 + y1) / 2.0
+            # save as  [float(cx), float(cy)]
+            token2local[token_id] = [float(cx), float(cy)]
 
             token_id += 1
 
-    return token_dict, token_center
+    return local2token, token2local
 
 
 # Example usage:
 if __name__ == "__main__":
     m_max, m_min = 90, -10
     n_max, n_min = 10, -10
-    x = 32 + 1 # Number of logarithmically spaced points on m-axis positive side
-    y = 16 + 1 # Number of logarithmically spaced points on each side of the n-axis
+    M_points = 32 + 1
+    N_points = 16 + 1
 
     # Create grid boundaries with the origin shifted to (0, 0)
-    m_boundaries, n_boundaries = get_scaled_arcsinh_grid(m_min, m_max, n_min, n_max, x, y, 6, 2)
+    m_boundaries_max = arcsinh_space_scaled(0, m_max, M_points - 7, alpha=3.0)
+    m_boundaries_min = arcsinh_space_scaled(m_min, 0, 8, alpha=3.0)
+    n_boundaries = arcsinh_space_scaled(n_min, n_max, N_points, alpha=1.5)
+    m_boundaries = np.concatenate((m_boundaries_max, m_boundaries_min[:-1]))
+    m_boundaries = np.sort(m_boundaries)
+    print(m_boundaries)
+    print(n_boundaries)
     # Create token map for the grid cells
-    token_search, tokenizer = create_token_dict_and_centers(m_boundaries, n_boundaries)
-    with open("/home/nio/reparke2e/configs/token2local.json", "w") as f:
-        f.write(json.dumps(tokenizer))
+    local2token, token2local = create_local2token_ndarray(m_boundaries, n_boundaries)
+    print("local2token shape:", local2token.shape)  # (32, 16)
+    print("Total tokens:", local2token.size)  # 32*16=512
 
-    with open("/home/nio/reparke2e/configs/local2token.json", "w") as f:
-        f.write(json.dumps(token_search))
+    with open("/home/nio/reparke2e/configs/token2local.json", "w") as f:
+        json.dump(token2local, f, indent=2)
+
+    np.save("/home/nio/reparke2e/configs/local2token.npy", local2token)
 
     # Create a new figure and axis
-    fig, ax = plt.subplots(figsize=(16, 12))
+    fig, ax = plt.subplots(figsize=(10, 8))
 
     # Draw vertical lines for each m-axis boundary
     for x in m_boundaries:
@@ -133,12 +127,11 @@ if __name__ == "__main__":
     for y in n_boundaries:
         ax.axhline(y=y, color='red', linestyle='--', linewidth=0.5)
 
-    print(len(tokenizer))
-
-    # Set axis limits based on the boundaries
     ax.set_xlim(m_boundaries[0], m_boundaries[-1])
     ax.set_ylim(n_boundaries[0], n_boundaries[-1])
-
     ax.set_xlabel("m-axis")
     ax.set_ylabel("n-axis")
+    ax.set_title("Grid Visualization")
+    plt.show()
+
     fig.savefig("/home/nio/reparke2e/configs/token_plot.png", dpi=300)

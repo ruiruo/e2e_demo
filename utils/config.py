@@ -2,7 +2,6 @@ import datetime
 import os
 from dataclasses import dataclass
 from typing import List
-
 import torch
 import yaml
 from loguru import logger
@@ -14,6 +13,9 @@ class Configuration:
     data_dir: str
     training_dir: str
     validation_dir: str
+    token_nums: int
+    tokenizer: str
+    detokenizer: str
 
     # Basic Options
     data_mode: str
@@ -33,6 +35,8 @@ class Configuration:
     add_noise_to_target: bool
     target_noise_threshold: float
 
+    # Encoder Options
+
     # Decoder Options
     decoder_method: str
     tf_de_dim: int
@@ -40,12 +44,17 @@ class Configuration:
     tf_de_layers: int
     tf_de_dropout: float
 
+    # Tokenizer
+    x_boundaries: List
+    y_boundaries: List
+
     # Optional extras
     device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     resume_path: str = None
     config_path: str = None
     log_dir: str = None
     checkpoint_dir: str = None
+    is_train: bool = True
 
 
 @dataclass
@@ -90,6 +99,7 @@ def get_inference_config_obj(config_path: str):
             inference_config_obj = InferenceConfiguration(**config_yaml)
         except yaml.YAMLError:
             logger.exception("Open {} failed!", config_path)
-    training_config_path = os.path.join(os.path.dirname(config_path), "{}.yaml".format(inference_config_obj.training_config))
+    training_config_path = os.path.join(os.path.dirname(config_path),
+                                        "{}.yaml".format(inference_config_obj.training_config))
     inference_config_obj.train_meta_config = get_train_config_obj(training_config_path)
     return inference_config_obj
