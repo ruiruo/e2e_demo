@@ -16,7 +16,8 @@ class Configuration:
     token_nums: int
     tokenizer: str
     detokenizer: str
-
+    multi_agent_info: bool
+    max_frame: int
     # Basic Options
     data_mode: str
     num_gpus: int
@@ -36,7 +37,7 @@ class Configuration:
     target_noise_threshold: float
 
     # Encoder Options
-
+    embedding_dim: int
     # Decoder Options
     decoder_method: str
     tf_de_dim: int
@@ -47,7 +48,7 @@ class Configuration:
     # Tokenizer
     x_boundaries: List
     y_boundaries: List
-
+    bos_id: int
     # Optional extras
     device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     resume_path: str = None

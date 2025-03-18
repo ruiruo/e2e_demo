@@ -11,9 +11,35 @@ import numpy as np
 import os
 import pickle
 import torch
-import yaml
 
-import numpy as np
+
+def create_sample(ego_tokens, agent_info, bos_token, eos_token, pad_token, target_seq_len):
+    """
+    Create an autoregressive training sample for a forward-only model (similar to GPT).
+
+    Parameters:
+        ego_tokens (List[int]): The tokenized ego trajectory.
+        agent_info (Any): Background agent information (e.g., topological descriptions for each time step).
+        bos_token (int): The beginning-of-sequence token.
+        eos_token (int): The end-of-sequence token.
+        pad_token (int): The padding token.
+        target_seq_len (int): The desired sequence length after adding BOS, EOS, and PAD tokens.
+
+    Returns:
+        input_ids (List[int]): The input sequence for the autoregressive model (tokens up to the last token).
+        labels (List[int]): The target tokens (the input sequence shifted by one position).
+        agent_info (Any): The background agent information, unchanged.
+    """
+    # Build the ego trajectory with BOS and EOS tokens.
+    trajectory = np.concatenate([np.array([bos_token]), ego_tokens, np.array([eos_token])])
+    # Calculate the number of PAD tokens needed to reach the target sequence length.
+    n_pad = max(0, target_seq_len - len(trajectory))
+    trajectory = np.concatenate([trajectory, np.array([pad_token] * n_pad)])
+    # For autoregressive training, the model inputs are the tokens up to the last token,
+    # and the labels are the tokens shifted one position to the left.
+    input_ids = trajectory[:-1]
+    labels = trajectory[1:]
+    return input_ids, labels, agent_info
 
 
 def parallel_find_bin(points, m_boundaries, n_boundaries):
@@ -146,11 +172,12 @@ class TopologyHistory:
     def _preprocess(self, feature):
         self._preprocess_ego(feature.get('ego_history_feature'))
         self._preprocess_agent(feature)
+        self.info["goal_info"] = self.info["ego_info"][-1][0:2]
         self._cut()
 
     def _cut(self):
-        self.info["ego_info"] = self.info["ego_info"][-self.max_frame -1:-1, :]
-        self.info["agent_info"] = self.info["agent_info"][-self.max_frame -1:-1, :]
+        self.info["ego_info"] = self.info["ego_info"][-self.max_frame - 1:-1, :]
+        self.info["agent_info"] = self.info["agent_info"][-self.max_frame - 1:-1, :]
 
     def _preprocess_agent(self, feature):
         parser = AgentFeatureParser(feature)
@@ -162,6 +189,7 @@ class TopologyHistory:
         formatted as (x, y, heading, v, acc).
         """
         # Extract the required columns.
+        # TODO: The frame interval is unstable, varying between 100ms and 200ms.
         # Consider whether to use frame extraction or direct cropping.
         ego_info = ego_history[:, 2:7].copy()
         # Align the starting position of the ego vehicle to (0, 0).
@@ -187,7 +215,7 @@ class AgentFeatureParser:
             if key not in feature:
                 raise KeyError(f"Missing required key '{key}' in feature dictionary.")
         # Use the last frame of ego history as the position bias.
-        self.pos_bias = feature['ego_history_feature'][0, 2:4]
+        self.pos_bias = feature['ego_history_feature'][-1, 2:4]
         self.agent = feature['agent_feature']
         self.agent_attribute = feature['agent_attribute_feature']
 
@@ -382,11 +410,11 @@ class AgentFeatureParser:
 
 
 class TrajectoryInfoParser:
-    def __init__(self, task_index, task_path):
+    def __init__(self, task_index, task_path, max_frame):
         self.task_index = task_index
         self.task_path = task_path
         self.total_trajectory = 0
-        self.window_size = 10
+        self.max_frame = 10
         self.trajectories = []
         self._get_data()
 
@@ -404,15 +432,15 @@ class TrajectoryInfoParser:
                 agent_feature = data['agent_feature']
                 slice_length = ego_history.shape[0]
 
-                for start_idx in range(slice_length - self.window_size):
-                    end_idx = start_idx + self.window_size + 1
+                for start_idx in range(slice_length - self.max_frame):
+                    end_idx = start_idx + self.max_frame + 1
                     ego_window = ego_history[start_idx:end_idx]
                     agent_window = agent_feature[:, start_idx:end_idx, :]
                     self.trajectories.append(TopologyHistory(case_id, {
                         "ego_history_feature": ego_window,
                         "agent_feature": agent_window,
                         "agent_attribute_feature": data["agent_attribute_feature"]},
-                         self.window_size))
+                         self.max_frame))
                     self.total_trajectory += 1
 
     def _filter_useful_slice(self, data: dict) -> dict:
@@ -420,10 +448,10 @@ class TrajectoryInfoParser:
             过滤 `ego_history_feature`（自车历史轨迹）和 `agent_feature`（其他交通参与者特征），
             以获取有用的时间片段并进行处理，包括：
             1. 提取时间戳间隔较大的数据片段（>0.18s）。
-            2. 过滤短时间间隔的数据，确保数据长度不小于 self.window_size。
+            2. 过滤短时间间隔的数据，确保数据长度不小于 self.max_frame。
             3. 反转时间顺序，使最新的数据排在前面。
             4. 过滤自车 x, y, 速度 (v) 以及方向 (heading) 和加速度 (acc) 中的微小数值
-            5. 再次筛选出连续自车移动的片段，确保数据长度不小于 self.window_size，并进行坐标偏移处理。
+            5. 再次筛选出连续自车移动的片段，确保数据长度不小于 self.max_frame，并进行坐标偏移处理。
 
             返回：
             - dict: 处理后的 `data` 字典，更新 `ego_history_feature` 和 `agent_feature`。
@@ -438,7 +466,7 @@ class TrajectoryInfoParser:
                 if time_diff > 0.18:
                     slice_start = min(i + 1, ego_history.shape[0] - 1)
             elif time_diff < 0.18:
-                if slice_start - i >= self.window_size:
+                if slice_start - i >= self.max_frame:
                     slice_end = min(i + 1, ego_history.shape[0] - 1)
                     break
                 slice_start = None
@@ -447,8 +475,8 @@ class TrajectoryInfoParser:
             # raise ValueError("未找到连续的时间戳间隔大于200ms的片段")
             return {}
         slice_length = slice_start - slice_end
-        if slice_length < self.window_size:
-            # raise ValueError(f"满足时间戳间隔的子数组不足{self.window_size}个")
+        if slice_length < self.max_frame:
+            # raise ValueError(f"满足时间戳间隔的子数组不足{self.max_frame}个")
             return {}
 
         ego_history = ego_history[slice_end : slice_start][::-1]
@@ -474,7 +502,7 @@ class TrajectoryInfoParser:
                 if x_diff > 1e-3:
                     slice_start = max(i, 0)
             elif x_diff < 1e-3:
-                if slice_start - i >= self.window_size:
+                if slice_start - i >= self.max_frame:
                     slice_end = i
                     break
                 slice_start = None
@@ -483,8 +511,8 @@ class TrajectoryInfoParser:
             # raise ValueError("未找到连续自车移动的的片段")
             return {}
         slice_length = slice_end - slice_start
-        if slice_length < self.window_size:
-            # raise ValueError(f"满足自车移动的子数组不足{self.window_size}个")
+        if slice_length < self.max_frame:
+            # raise ValueError(f"满足自车移动的子数组不足{self.max_frame}个")
             return {}
 
         ego_history = ego_history[slice_start : slice_end]

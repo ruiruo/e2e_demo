@@ -1,54 +1,90 @@
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+from utils.trajectory_utils import parallel_find_bin
 
 
 def arcsinh_space_scaled(min_val, max_val, num_points, alpha=1.0):
     """
     Returns an array of 'num_points' values between min_val and max_val,
-    spaced uniformly in asinh-space but with a scaling factor alpha.
-
-    If alpha is large, points near zero become more spread out.
-
-    Parameters:
-      min_val (float): lower bound of the interval
-      max_val (float): upper bound of the interval
-      num_points (int): number of points to generate
-      alpha (float): scale factor to reduce clustering near zero
-
-    Returns:
-      numpy.ndarray: values spanning [min_val, max_val] with arcsinh-based spacing
+    spaced uniformly in asinh-space with a scaling factor alpha.
     """
-    # Transform bounds using arcsinh(x/alpha)
     t1 = np.arcsinh(min_val / alpha)
     t2 = np.arcsinh(max_val / alpha)
-    # Uniformly sample in that transformed domain
     t = np.linspace(t1, t2, num_points)
-    # Transform back: x = alpha * sinh(t)
     return alpha * np.sinh(t)
 
 
-def get_scaled_arcsinh_grid(m_min, m_max, n_min, n_max, m_points, n_points, alpha_m=1.0, alpha_n=1.0):
-    # Generate boundaries using arcsinh with scaling factors
-    m_boundaries = arcsinh_space_scaled(m_min, m_max, m_points, alpha=alpha_m)
-    n_boundaries = arcsinh_space_scaled(n_min, n_max, n_points, alpha=alpha_n)
+def piecewise_boundaries_1d(
+        overall_min, overall_max,
+        uniform_left, uniform_right,
+        uniform_segments,
+        arcsinh_alpha=3.0,
+        arcsinh_points_neg=10,
+        arcsinh_points_pos=10,
+):
     """
-    Create grid boundaries for the m-axis and n-axis after shifting the origin to (0, 0).
+    Build a 1D boundary array with:
+      1) arcsinh from [overall_min, uniform_left]
+      2) uniform from [uniform_left, uniform_right] in 'uniform_segments' intervals
+      3) arcsinh from [uniform_right, overall_max]
 
-    For the m-axis:
-      - Negative side: uniformly spaced from -0.1*m to 0 (y points).
-      - Positive side: logarithmically spaced from 0 to (m - 0.1*m) (x points, with 0 inserted manually).
-
-    For the n-axis:
-      - Negative side: logarithmically spaced on the absolute values from 0.5*n to a small epsilon,
-        then negated and reversed to yield boundaries from -0.5*n to 0 (s points, with 0 manually inserted).
-      - Positive side: logarithmically spaced from epsilon to (n - 0.5*n) (s points, with 0 inserted).
-
-    Returns:
-      m_boundaries: 1D numpy array of sorted boundary values along the m-axis.
-      n_boundaries: 1D numpy array of sorted boundary values along the n-axis.
+    Ensures that 0 is inside the uniform region if 0 in [uniform_left, uniform_right].
+    If 'uniform_segments' is odd, 0 will be the exact center of the middle interval.
     """
-    return m_boundaries, n_boundaries
+    # arcsinh negative side
+    if uniform_left > overall_min:
+        neg_arcsinh = arcsinh_space_scaled(overall_min, uniform_left, arcsinh_points_neg, arcsinh_alpha)
+    else:
+        neg_arcsinh = np.array([uniform_left], dtype=np.float64)
+
+    # uniform middle
+    # uniform_segments intervals => uniform_segments+1 boundaries
+    middle = np.linspace(uniform_left, uniform_right, uniform_segments + 1, dtype=np.float64)
+
+    # arcsinh positive side
+    if uniform_right < overall_max:
+        pos_arcsinh = arcsinh_space_scaled(uniform_right, overall_max, arcsinh_points_pos, arcsinh_alpha)
+    else:
+        pos_arcsinh = np.array([uniform_right], dtype=np.float64)
+
+    # merge
+    combined = np.concatenate([neg_arcsinh, middle, pos_arcsinh])
+    combined = np.unique(combined)  # remove duplicates if any
+    combined.sort()
+    return combined
+
+
+def build_2d_boundaries(x_min, x_max, y_min, y_max):
+    """
+    Example: we want:
+      - x in [overall_min_x, overall_max_x] = [-10, 40]
+        with a uniform region [-5, 5] subdivided into 5 intervals (=> center interval around 0).
+      - y in [overall_min_y, overall_max_y] = [-5, 5]
+        with a uniform region [-2, 2] subdivided into 5 intervals (=> center interval around 0).
+      - arcsinh outside the uniform region for both axes.
+    """
+    # x-axis: piecewise from [-10, -5, 5, 40]
+    x_boundary = piecewise_boundaries_1d(
+        overall_min=x_min, overall_max=x_max,
+        uniform_left=-5, uniform_right=5,
+        uniform_segments=21,  # must be odd => the middle interval center is x=0
+        arcsinh_alpha=3.0,
+        arcsinh_points_neg=9,
+        arcsinh_points_pos=22,
+    )
+
+    # y-axis: piecewise from [-5, -2, 2, 5]
+    y_boundary = piecewise_boundaries_1d(
+        overall_min=y_min, overall_max=y_max,
+        uniform_left=-2, uniform_right=2,
+        uniform_segments=11,  # also odd => center interval is y=0
+        arcsinh_alpha=3.0,
+        arcsinh_points_neg=7,
+        arcsinh_points_pos=8,
+    )
+
+    return x_boundary, y_boundary
 
 
 def create_local2token_ndarray(m_boundaries, n_boundaries):
@@ -93,21 +129,33 @@ def create_local2token_ndarray(m_boundaries, n_boundaries):
 
 # Example usage:
 if __name__ == "__main__":
-    m_max, m_min = 90, -10
-    n_max, n_min = 10, -10
-    M_points = 32 + 1
-    N_points = 16 + 1
+    m_max, m_min = 40, -10
+    n_max, n_min = 5, -5
 
-    # Create grid boundaries with the origin shifted to (0, 0)
-    m_boundaries_max = arcsinh_space_scaled(0, m_max, M_points - 7, alpha=3.0)
-    m_boundaries_min = arcsinh_space_scaled(m_min, 0, 8, alpha=3.0)
-    n_boundaries = arcsinh_space_scaled(n_min, n_max, N_points, alpha=1.5)
-    m_boundaries = np.concatenate((m_boundaries_max, m_boundaries_min[:-1]))
-    m_boundaries = np.sort(m_boundaries)
-    print(m_boundaries)
-    print(n_boundaries)
+    x_boundaries, y_boundaries = build_2d_boundaries(m_min, m_max, n_min, n_max)
+
+    print("x_boundaries:\n", x_boundaries.astype(np.float16).tolist())
+    print("y_boundaries:\n", y_boundaries.astype(np.float16).tolist())
+
+    # Visualize
+    fig, ax = plt.subplots(figsize=(10, 8))
+    for xb in x_boundaries:
+        ax.axvline(x=xb, color='blue', linestyle='--', linewidth=0.5)
+    for yb in y_boundaries:
+        ax.axhline(y=yb, color='red', linestyle='--', linewidth=0.5)
+
+    ax.set_xlim(x_boundaries[0], x_boundaries[-1])
+    ax.set_ylim(y_boundaries[0], y_boundaries[-1])
+    ax.set_title("Piecewise Boundaries with 0,0 as Middle Interval Center")
+    ax.set_xlabel("X axis")
+    ax.set_ylabel("Y axis")
+    plt.show()
+    fig.savefig("/home/nio/reparke2e/configs/token_plot.png", dpi=300)
+
     # Create token map for the grid cells
-    local2token, token2local = create_local2token_ndarray(m_boundaries, n_boundaries)
+    local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
+
+    print("BOS:", parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries))
     print("local2token shape:", local2token.shape)  # (32, 16)
     print("Total tokens:", local2token.size)  # 32*16=512
 
@@ -115,23 +163,3 @@ if __name__ == "__main__":
         json.dump(token2local, f, indent=2)
 
     np.save("/home/nio/reparke2e/configs/local2token.npy", local2token)
-
-    # Create a new figure and axis
-    fig, ax = plt.subplots(figsize=(10, 8))
-
-    # Draw vertical lines for each m-axis boundary
-    for x in m_boundaries:
-        ax.axvline(x=x, color='blue', linestyle='--', linewidth=0.5)
-
-    # Draw horizontal lines for each n-axis boundary
-    for y in n_boundaries:
-        ax.axhline(y=y, color='red', linestyle='--', linewidth=0.5)
-
-    ax.set_xlim(m_boundaries[0], m_boundaries[-1])
-    ax.set_ylim(n_boundaries[0], n_boundaries[-1])
-    ax.set_xlabel("m-axis")
-    ax.set_ylabel("n-axis")
-    ax.set_title("Grid Visualization")
-    plt.show()
-
-    fig.savefig("/home/nio/reparke2e/configs/token_plot.png", dpi=300)
