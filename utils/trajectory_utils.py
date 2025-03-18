@@ -214,8 +214,8 @@ class AgentFeatureParser:
         for key in required_keys:
             if key not in feature:
                 raise KeyError(f"Missing required key '{key}' in feature dictionary.")
-        # Use the last frame of ego history as the position bias.
-        self.pos_bias = feature['ego_history_feature'][-1, 2:4]
+        # Use the first frame of ego history as the position bias.
+        self.pos_bias = feature['ego_history_feature'][0, 2:4]
         self.agent = feature['agent_feature']
         self.agent_attribute = feature['agent_attribute_feature']
 
@@ -445,18 +445,19 @@ class TrajectoryInfoParser:
 
     def _filter_useful_slice(self, data: dict) -> dict:
         """
-            过滤 `ego_history_feature`（自车历史轨迹）和 `agent_feature`（其他交通参与者特征），
-            以获取有用的时间片段并进行处理，包括：
-            1. 提取时间戳间隔较大的数据片段（>0.18s）。
-            2. 过滤短时间间隔的数据，确保数据长度不小于 self.max_frame。
-            3. 反转时间顺序，使最新的数据排在前面。
-            4. 过滤自车 x, y, 速度 (v) 以及方向 (heading) 和加速度 (acc) 中的微小数值
-            5. 再次筛选出连续自车移动的片段，确保数据长度不小于 self.max_frame，并进行坐标偏移处理。
+        Filter `ego_history_feature` (self-vehicle's historical trajectory) and `agent_feature` (features of other traffic participants)
+        to obtain and process useful time segments, including:
+        1. Extract data segments with large timestamp intervals (> 0.18s).
+        2. Filter out segments with short intervals, ensuring that the segment length is not less than self.max_frame.
+        3. Reverse the time order so that the most recent data is at the front.
+        4. Filter out small values in self-vehicle's x, y, velocity (v) as well as heading and acceleration (acc).
+        5. Re-select continuous segments of self movement, ensuring that the segment length is not less than self.max_frame,
+           and apply coordinate offset processing.
 
-            返回：
-            - dict: 处理后的 `data` 字典，更新 `ego_history_feature` 和 `agent_feature`。
-            - 没有有效数据时返回{}
-            """
+        Returns:
+        - dict: The processed `data` dictionary with updated `ego_history_feature` and `agent_feature`.
+        - {} if no valid data is found.
+        """
         ego_history = data['ego_history_feature']
         slice_start = None
         slice_end = 0
@@ -472,11 +473,11 @@ class TrajectoryInfoParser:
                 slice_start = None
 
         if slice_start is None:
-            # raise ValueError("未找到连续的时间戳间隔大于200ms的片段")
+            print("Task{self.task_index} no segment found with consecutive timestamp intervals greater than 0.2s")
             return {}
         slice_length = slice_start - slice_end
         if slice_length < self.max_frame:
-            # raise ValueError(f"满足时间戳间隔的子数组不足{self.max_frame}个")
+            print(f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
             return {}
 
         ego_history = ego_history[slice_end : slice_start][::-1]
@@ -490,9 +491,11 @@ class TrajectoryInfoParser:
         # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
         for col in [2, 3, 5]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-3, 0, ego_history[:, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0, data['agent_feature'][:, :, col])
         # Threshold for [heading, acc]: set values with absolute value < 1e-3 to 0.
         for col in [4, 6]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-5, 0, ego_history[:, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0, data['agent_feature'][:, :, col])
 
         slice_start = None
         slice_end = ego_history.shape[0]
@@ -508,11 +511,11 @@ class TrajectoryInfoParser:
                 slice_start = None
 
         if slice_start is None:
-            # raise ValueError("未找到连续自车移动的的片段")
+            print("Task{self.task_index} no segment of continuous self movement found")
             return {}
         slice_length = slice_end - slice_start
         if slice_length < self.max_frame:
-            # raise ValueError(f"满足自车移动的子数组不足{self.max_frame}个")
+            print(f"Task{self.task_index} subarray satisfying self movement condition has fewer than {self.max_frame} elements")
             return {}
 
         ego_history = ego_history[slice_start : slice_end]
