@@ -1,16 +1,10 @@
 from shapely.geometry import LineString
 from shapely.measurement import hausdorff_distance
 from typing import List
-
-from sympy import limit
-
-from utils.common import get_json_content
-# from utils.pose_utils import CustomizePose
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
-import torch
 
 
 def create_sample(ego_tokens, agent_info, bos_token, eos_token, pad_token, target_seq_len):
@@ -531,3 +525,54 @@ class TrajectoryInfoParser:
         data['agent_feature'] = new_agent_feature
 
         return data
+
+
+class TrajectoryDistance:
+    def __init__(self, prediction_points_np, gt_points_np):
+        self.prediction_points_np = prediction_points_np
+        self.gt_points_np = gt_points_np
+
+        self.cut_stop_segment()
+
+    def cut_stop_segment(self, stop_threshold=0.001):
+        distance_list = np.linalg.norm(self.gt_points_np[1:, :] - self.gt_points_np[:-1, :], axis=-1)
+
+        threshold_bool_list = abs(distance_list) < stop_threshold
+
+        stop_index = -1
+        for index in range(0, len(threshold_bool_list)):
+            inverse_index = len(threshold_bool_list) - index - 1
+            if not threshold_bool_list[inverse_index]:
+                stop_index = inverse_index + 1
+                break
+        self.prediction_points_np = self.prediction_points_np[:stop_index + 1]
+        self.gt_points_np = self.gt_points_np[:stop_index + 1]
+
+    def get_len(self):
+        return self.gt_points_np.shape[0]
+
+    def get_l2_distance(self):
+        l2_distance_list = np.linalg.norm(self.gt_points_np - self.prediction_points_np, axis=1)
+        l2_distance = np.mean(l2_distance_list)
+        return l2_distance
+
+    def get_haus_distance(self):
+        line_gt = LineString(self.gt_points_np)
+        line_pred = LineString(self.prediction_points_np)
+        haus_distance = hausdorff_distance(line_pred, line_gt)
+        return haus_distance
+
+    def get_fourier_difference(self):
+        fd1 = self.compute_fourier_descriptor(self.gt_points_np, num_descriptors=10)
+        fd2 = self.compute_fourier_descriptor(self.prediction_points_np, num_descriptors=10)
+        fourier_difference = np.linalg.norm(fd1 - fd2)
+        return fourier_difference
+
+    def compute_fourier_descriptor(self, points, num_descriptors):
+        complex_points = np.empty(points.shape[0], dtype=complex)
+        complex_points.real = points[:, 0]
+        complex_points.imag = points[:, 1]
+        descriptors = np.fft.fft(complex_points)
+        descriptors = np.abs(descriptors[:num_descriptors])
+
+        return descriptors

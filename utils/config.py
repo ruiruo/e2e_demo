@@ -40,6 +40,7 @@ class Configuration:
     embedding_dim: int
     # Decoder Options
     decoder_method: str
+    item_number: int
     tf_de_dim: int
     tf_de_heads: int
     tf_de_layers: int

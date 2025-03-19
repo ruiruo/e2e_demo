@@ -27,6 +27,9 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         self.trajectories_gt = []
         self.trajectories_goals = []
         self.trajectories_features = []
+        # TODO: for eval
+        self.trajectories_raw = []
+        self.trajectories_gt_raw = []
         self.task_index_list = {}
         self.create_gt_data()
 
@@ -45,13 +48,11 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
             - agent_features: (Optional) Agent or background features if available
         """
         # Extract the training sample from the preprocessed arrays based on the index.
-        trajectories = self.trajectories[index]  # shape (11,)
-        labels = self.trajectories_gt[index]  # shape (11,)
-        goal = self.trajectories_goals[index]  # shape (2,)
-
+        trajectories = torch.from_numpy(self.trajectories[index])  # shape (11,)
+        labels = torch.from_numpy(self.trajectories_gt[index])  # shape (11,)
+        goal = torch.from_numpy(self.trajectories_goals[index])  # shape (2,)
         # If agent features were generated in create_gt_data (e.g., self.trajectories_features), return them as well.
-        agent_features = self.trajectories_features[index] if hasattr(self, "trajectories_features") else None
-
+        agent_features = torch.from_numpy(self.trajectories_features[index])
         return {
             "input_ids": trajectories,
             "labels": labels,
@@ -83,7 +84,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                     goal_info = (int(goal_info[0]), int(goal_info[1]))
                     self.trajectories.append(input_ids)
                     self.trajectories_gt.append(labels)
-                    self.trajectories_goals.append(self.local2token[goal_info][0])
+                    self.trajectories_goals.append(np.array([self.local2token[goal_info]]))
                     self.trajectories_features.append(agent_info)
                 id_e += 1
             self.task_index_list[task_index] = [id_s, id_e]
