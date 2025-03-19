@@ -7,9 +7,9 @@ from utils.config import Configuration
 from utils.metrics import TrajectoryGeneratorMetric
 
 
-class TrajectoryTrainingModuleTrain(pl.LightningModule):
+class TrajectoryTrainingModule(pl.LightningModule):
     def __init__(self, cfg: Configuration):
-        super(TrajectoryTrainingModuleTrain, self).__init__()
+        super(TrajectoryTrainingModule, self).__init__()
         self.save_hyperparameters()
 
         self.cfg = cfg

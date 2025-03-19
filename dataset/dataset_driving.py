@@ -12,17 +12,20 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
     def __init__(self, config: Configuration, is_train):
         super(TrajectoryDataModule, self).__init__()
         self.cfg = config
-        self.BOS_token = self.cfg.bos_id
-        self.EOS_token = self.cfg.token_nums + 1
-        self.PAD_token = self.cfg.token_nums + 2
+        self.BOS_token = self.cfg.bos_token
+        self.EOS_token = self.cfg.eos_token
+        self.PAD_token = self.cfg.pad_token
         self.x_boundaries = np.array(self.cfg.x_boundaries)
         self.y_boundaries = np.array(self.cfg.y_boundaries)
         self.local2token = np.load(self.cfg.tokenizer)
+        # maybe not necessary here ?
         with open(self.cfg.detokenizer, "r") as f:
             self.detokenizer = json.load(f)
 
         self.root_dir = self.cfg.data_dir
         self.is_train = is_train
+        self.ego_info = []
+        self.goal_info = []
         self.trajectories = []
         self.trajectories_gt = []
         self.trajectories_goals = []
@@ -51,13 +54,14 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         trajectories = torch.from_numpy(self.trajectories[index])  # shape (11,)
         labels = torch.from_numpy(self.trajectories_gt[index])  # shape (11,)
         goal = torch.from_numpy(self.trajectories_goals[index])  # shape (2,)
-        # If agent features were generated in create_gt_data (e.g., self.trajectories_features), return them as well.
         agent_features = torch.from_numpy(self.trajectories_features[index])
+        ego_features = torch.from_numpy(self.ego_info[index])
         return {
             "input_ids": trajectories,
             "labels": labels,
             "goal": goal,
-            "agent_features": agent_features
+            "agent_features": agent_features,
+            "ego_info": ego_features,
         }
 
     def create_gt_data(self):
@@ -82,6 +86,8 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                     goal_info = parallel_find_bin(np.expand_dims(trajectory.info["goal_info"], 0),
                                                   self.x_boundaries, self.y_boundaries)
                     goal_info = (int(goal_info[0]), int(goal_info[1]))
+                    self.ego_info.append(trajectory.info["ego_info"][0, 2:])
+                    self.goal_info.append(trajectory.info["ego_info"][-1, 2:])
                     self.trajectories.append(input_ids)
                     self.trajectories_gt.append(labels)
                     self.trajectories_goals.append(np.array([self.local2token[goal_info]]))

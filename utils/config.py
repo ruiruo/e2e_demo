@@ -39,7 +39,6 @@ class Configuration:
     # Encoder Options
     embedding_dim: int
     # Decoder Options
-    decoder_method: str
     item_number: int
     tf_de_dim: int
     tf_de_heads: int
@@ -49,7 +48,9 @@ class Configuration:
     # Tokenizer
     x_boundaries: List
     y_boundaries: List
-    bos_id: int
+    bos_token: int
+    eos_token: int
+    pad_token: int
     # Optional extras
     device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     resume_path: str = None

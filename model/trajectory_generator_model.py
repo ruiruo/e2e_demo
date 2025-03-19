@@ -10,18 +10,25 @@ class TrajectoryGenerator(nn.Module):
     def __init__(self, cfg: Configuration):
         super().__init__()
         self.cfg = cfg
-        self.token_embedding = nn.Embedding(self.cfg.token_nums + 3, self.cfg.embedding_dim)
-        self.self_state_encoder = SelfStateEncoder(
-            feature_dim=3,
-            embed_dim=self.cfg.embedding_dim,
-            num_heads=2
-        )
+        self.token_embedding = nn.Embedding(self.cfg.token_nums + 2, self.cfg.embedding_dim)
+        self.self_state_encoder = SelfStateEncoder(self.cfg.embedding_dim, 3)
 
     def encoder(self, data):
-        self_state = self.self_state_encoder(data['ego_feature'].to(self.cfg.device, non_blocking=True))
-        goal_state = self.self_state_encoder(data['goal_feature'].to(self.cfg.device, non_blocking=True))
-        # TODO: add cross attention
+        bz, sl = data['input_ids'].shape
+        input_ids = data['input_ids'].reshape(bz * sl, -1)
+        ego_info = data['ego_info'].reshape(bz * sl, -1)
+        self_state = self.self_state_encoder(data['ego_info'].to(self.cfg.device, non_blocking=True))
 
+
+        # TODO: add cross attention
+        return self_state
 
     def forward(self, data):
+        for i, j in data.items():
+            print(i, j.shape)
+        self_state = self.encoder(data)
+
+        print(self_state.shape)
+
+        raise NotImplementedError
         token_embedding = self.token_embedding(data['ego_feature'].to(self.cfg.device, non_blocking=True))

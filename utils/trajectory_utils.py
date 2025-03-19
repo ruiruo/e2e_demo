@@ -102,18 +102,27 @@ def tokenize_traj_waypoints(waypoints, m_boundaries, n_boundaries, local2token):
     return token_ids
 
 
-def detokenize_traj_waypoint(token_id, token_center):
+def detokenize_traj_waypoints(token_ids, token2local):
     """
-    Given a token ID, return the center (cx, cy) of that grid cell.
+    Maps tokenized waypoint tokens to their corresponding continuous coordinates, and returns a NumPy array.
 
     Parameters:
-      token_id     : The token ID (int).
-      token_center : A dict mapping token_id -> (center_x, center_y).
+      token_ids   : An iterable (e.g., list or torch.Tensor) containing token IDs.
+      token2local : A dictionary mapping token_id -> (center_x, center_y).
 
     Returns:
-      (center_x, center_y) if token_id is found, else None.
+      A NumPy array of shape (N, 2) where each row represents (center_x, center_y).
+      If a token is not found in the mapping, the corresponding row will be [np.nan, np.nan].
     """
-    return token_center.get(token_id, None)
+    if hasattr(token_ids, 'tolist'):
+        token_ids = token_ids.tolist()
+
+    result = []
+    for token in token_ids:
+        coords = token2local.get(token, (np.nan, np.nan))
+        result.append(coords)
+    return np.array(result)
+
 
 
 def plot_trajectory_with_time(ego_info: np.ndarray):
@@ -155,7 +164,7 @@ class TopologyHistory:
     Encapsulated raw Topology History information.
     """
 
-    def __init__(self, frame_id: int, feature: dict, max_frame: int=10):
+    def __init__(self, frame_id: int, feature: dict, max_frame: int = 10):
         # ego_info = (t, 5), (t_-50, t_0), (x, y, heading, v, acc)
         # agent_info = (t, agent, 10), (t_-50, t_0), (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
         self.frame_id = frame_id
@@ -238,7 +247,7 @@ class AgentFeatureParser:
         # 5. Remove agents with id == 0 and id col
         mask_id_not_zero = new_agent_info[:, 0, 0] != 0
         new_agent_info = new_agent_info[mask_id_not_zero]
-        new_agent_info = new_agent_info[:,:,1:]
+        new_agent_info = new_agent_info[:, :, 1:]
 
         # Transpose dimensions from (agent, time, feature) to (time, agent, feature)
         return np.transpose(new_agent_info, (1, 0, 2))
@@ -402,7 +411,7 @@ class AgentFeatureParser:
                     min_dist = d
         return min_dist
 
-
+# TODO: not necessary to print so much info while generate dataset
 class TrajectoryInfoParser:
     def __init__(self, task_index, task_path, max_frame):
         self.task_index = task_index
@@ -434,7 +443,7 @@ class TrajectoryInfoParser:
                         "ego_history_feature": ego_window,
                         "agent_feature": agent_window,
                         "agent_attribute_feature": data["agent_attribute_feature"]},
-                         self.max_frame))
+                                                             self.max_frame))
                     self.total_trajectory += 1
 
     def _filter_useful_slice(self, data: dict) -> dict:
@@ -471,10 +480,11 @@ class TrajectoryInfoParser:
             return {}
         slice_length = slice_start - slice_end
         if slice_length < self.max_frame:
-            print(f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
+            print(
+                f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
             return {}
 
-        ego_history = ego_history[slice_end : slice_start][::-1]
+        ego_history = ego_history[slice_end: slice_start][::-1]
 
         new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]),
                                     fill_value=-300.)
@@ -485,11 +495,13 @@ class TrajectoryInfoParser:
         # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
         for col in [2, 3, 5]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-3, 0, ego_history[:, col])
-            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0, data['agent_feature'][:, :, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0,
+                                                        data['agent_feature'][:, :, col])
         # Threshold for [heading, acc]: set values with absolute value < 1e-3 to 0.
         for col in [4, 6]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-5, 0, ego_history[:, col])
-            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0, data['agent_feature'][:, :, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0,
+                                                        data['agent_feature'][:, :, col])
 
         slice_start = None
         slice_end = ego_history.shape[0]
@@ -505,20 +517,23 @@ class TrajectoryInfoParser:
                 slice_start = None
 
         if slice_start is None:
-            print("Task{self.task_index} no segment of continuous self movement found")
+            # print("Task{self.task_index} no segment of continuous self movement found")
             return {}
         slice_length = slice_end - slice_start
         if slice_length < self.max_frame:
-            print(f"Task{self.task_index} subarray satisfying self movement condition has fewer than {self.max_frame} elements")
+            # print(
+            #     f"Task{self.task_index} subarray satisfying self movement condition
+            #     has fewer than {self.max_frame} elements")
             return {}
 
-        ego_history = ego_history[slice_start : slice_end]
+        ego_history = ego_history[slice_start: slice_end]
         pos_bias = ego_history[0, 2:4].copy()
         ego_history[:, 2:4] -= pos_bias
 
-        new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]), fill_value=-300.)
+        new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]),
+                                    fill_value=-300.)
         for idx in range(len(data['agent_feature'])):
-            new_agent_feature[idx] = data['agent_feature'][idx][slice_start : slice_end]
+            new_agent_feature[idx] = data['agent_feature'][idx][slice_start: slice_end]
         new_agent_feature[:, :, 2:4] -= pos_bias
 
         data['ego_history_feature'] = ego_history
@@ -526,7 +541,7 @@ class TrajectoryInfoParser:
 
         return data
 
-
+# TODO: eval it
 class TrajectoryDistance:
     def __init__(self, prediction_points_np, gt_points_np):
         self.prediction_points_np = prediction_points_np

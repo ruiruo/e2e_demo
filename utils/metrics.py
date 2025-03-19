@@ -1,15 +1,17 @@
 import numpy as np
 import torch
-
+import json
 from utils.config import Configuration
-from utils.trajectory_utils import TrajectoryDistance, detokenize_traj_waypoint
+from utils.trajectory_utils import TrajectoryDistance, detokenize_traj_waypoints
 
 
 class TrajectoryGeneratorMetric:
-    def __init__(self, cfg: Configuration, pred_traj_waypoint, batch) -> None:
+    def __init__(self, cfg: Configuration, pred_traj_waypoints, batch) -> None:
         self.cfg = cfg
         self.BOS_token = self.cfg.token_nums
-        self.distance_dict = self.calculate_distance(pred_traj_waypoint, batch)
+        self.distance_dict = self.calculate_distance(pred_traj_waypoints, batch)
+        with open(self.cfg.detokenizer, "r") as f:
+            self.detokenizer = json.load(f)
 
     def calculate_distance(self, pred_traj_waypoints, batch):
         distance_dict = {}
@@ -18,7 +20,7 @@ class TrajectoryGeneratorMetric:
 
         prediction_waypoints = prediction_waypoints.reshape(self.cfg.batch_size, -1, self.cfg.item_number)
         gt_waypoints = gt_waypoints.reshape(self.cfg.batch_size, -1, self.cfg.item_number)
-        valid_mask = ((gt_waypoints < self.BOS_token) & (prediction_waypoints < self.BOS_token)).all(dim=-1)
+        valid_mask = ((gt_waypoints < self.cfg.eos_token) & (prediction_waypoints < self.cfg.eos_token)).all(dim=-1)
         prediction_waypoints_np = []
         gt_waypoints_np = []
         for index in range(self.cfg.batch_size):
@@ -44,12 +46,7 @@ class TrajectoryGeneratorMetric:
 
     def get_valid_np_waypoints(self, torch_waypoints, valid_mask):
         torch_waypoints_valid = torch_waypoints[valid_mask]
-        torch_waypoints_valid_detoken = detokenize_traj_waypoint(torch_waypoints_valid,
-                                                              token_nums=self.cfg.token_nums,
-                                                              item_num=self.cfg.item_number,
-                                                              xy_max=self.cfg.xy_max)
-        torch_waypoints_valid_detoken = torch_waypoints_valid_detoken[:, :2]
-        np_waypoints_valid_detoken = np.array(torch_waypoints_valid_detoken.cpu())
+        np_waypoints_valid_detoken = detokenize_traj_waypoints(torch_waypoints_valid, self.detokenizer)
         return np_waypoints_valid_detoken
 
     def get_predict_waypoints(self, pred_traj_waypoint):

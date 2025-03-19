@@ -2,7 +2,6 @@
 data_dir: '/home/nio/data/e2e_example/'
 training_dir: "train"
 validation_dir: "val"
-token_nums: 512
 is_train: True
 multi_agent_info: False
 ##################### Basic Options #####################
@@ -16,7 +15,7 @@ check_val_every_n_epoch: 5
 epochs: 40
 learning_rate: 0.0001
 weight_decay: 0.00001
-batch_size: 1
+batch_size: 4
 num_workers: 8
 # resume_path: ""
 
@@ -40,7 +39,10 @@ tf_de_dropout: 0.05
 
 ##################### Data #####################
 max_frame: 10
-bos_id: 443
+token_nums: 1200
+bos_token: 443
+eos_token: 1201
+pad_token: 1202
 x_boundaries: [ -10.0, -9.203125, -8.4609375, -7.7734375, -7.13671875, -6.54296875, -5.9921875,
                 -5.48046875, -5.0, -4.5234375, -4.046875, -3.572265625, -3.095703125, -2.619140625,
                 -2.142578125, -1.6669921875, -1.1904296875, -0.71435546875, -0.238037109375,

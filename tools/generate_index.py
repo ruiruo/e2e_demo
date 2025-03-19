@@ -154,8 +154,9 @@ if __name__ == "__main__":
 
     # Create token map for the grid cells
     local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
-
-    print("BOS:", parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries))
+    bos_local = parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries)
+    bos_local = (int(bos_local[0]), int(bos_local[1]))
+    print("BOS:", bos_local, bos_local[0] * (len(y_boundaries)-1) + bos_local[1])
     print("local2token shape:", local2token.shape)  # (32, 16)
     print("Total tokens:", local2token.size)  # 32*16=512
 
