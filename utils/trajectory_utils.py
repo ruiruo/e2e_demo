@@ -164,7 +164,7 @@ class TopologyHistory:
     Encapsulated raw Topology History information.
     """
 
-    def __init__(self, frame_id: int, feature: dict, max_frame: int = 10):
+    def __init__(self, frame_id: int, feature: dict, max_frame: int=10):
         # ego_info = (t, 5), (t_-50, t_0), (x, y, heading, v, acc)
         # agent_info = (t, agent, 10), (t_-50, t_0), (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
         self.frame_id = frame_id
@@ -411,13 +411,13 @@ class AgentFeatureParser:
                     min_dist = d
         return min_dist
 
-# TODO: not necessary to print so much info while generate dataset
+
 class TrajectoryInfoParser:
     def __init__(self, task_index, task_path, max_frame):
         self.task_index = task_index
         self.task_path = task_path
         self.total_trajectory = 0
-        self.max_frame = 10
+        self.max_frame = max_frame
         self.trajectories = []
         self._get_data()
 
@@ -480,11 +480,10 @@ class TrajectoryInfoParser:
             return {}
         slice_length = slice_start - slice_end
         if slice_length < self.max_frame:
-            print(
-                f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
+            print(f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
             return {}
 
-        ego_history = ego_history[slice_end: slice_start][::-1]
+        ego_history = ego_history[slice_end : slice_start][::-1]
 
         new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]),
                                     fill_value=-300.)
@@ -495,13 +494,11 @@ class TrajectoryInfoParser:
         # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
         for col in [2, 3, 5]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-3, 0, ego_history[:, col])
-            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0,
-                                                        data['agent_feature'][:, :, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0, data['agent_feature'][:, :, col])
         # Threshold for [heading, acc]: set values with absolute value < 1e-3 to 0.
         for col in [4, 6]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-5, 0, ego_history[:, col])
-            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0,
-                                                        data['agent_feature'][:, :, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0, data['agent_feature'][:, :, col])
 
         slice_start = None
         slice_end = ego_history.shape[0]
