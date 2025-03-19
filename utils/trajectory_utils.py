@@ -155,7 +155,7 @@ class TopologyHistory:
     Encapsulated raw Topology History information.
     """
 
-    def __init__(self, frame_id: int, feature: dict, max_frame: int=10):
+    def __init__(self, frame_id: int, feature: dict, max_frame: int=11):
         # ego_info = (t, 5), (t_-50, t_0), (x, y, heading, v, acc)
         # agent_info = (t, agent, 10), (t_-50, t_0), (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
         self.frame_id = frame_id
@@ -408,7 +408,7 @@ class TrajectoryInfoParser:
         self.task_index = task_index
         self.task_path = task_path
         self.total_trajectory = 0
-        self.max_frame = 10
+        self.max_frame = max_frame
         self.trajectories = []
         self._get_data()
 
