@@ -119,7 +119,7 @@ def detokenize_traj_waypoints(token_ids, token2local):
 
     result = []
     for token in token_ids:
-        coords = token2local.get(token, (np.nan, np.nan))
+        coords = getattr(token2local, str(token), [np.nan, np.nan])
         result.append(coords)
     return np.array(result)
 
@@ -230,9 +230,9 @@ class AgentFeatureParser:
             (s_id, id, x, y, heading, v, acc, timestamp)
         """
         # 1. Extract necessary columns and align with ego position bias.
-        agent_info = self.agent[:, :, 1:7].copy()
+        agent_info = self.agent[:, 0, 1:7].copy()
         agent_attr = self.agent_attribute[:, :3]
-        mask = ~np.any(agent_info[:, :, 1:3] == -300, axis=2)
+        mask = ~np.any(agent_info[:, 1:3] == -300, axis=1)
         agent_info[mask, 1:3] -= self.pos_bias
 
         # 2. Concatenate agent attributes to agent_info.
@@ -245,12 +245,11 @@ class AgentFeatureParser:
         new_agent_info = self._append_min_polygon_distance(new_agent_info)
 
         # 5. Remove agents with id == 0 and id col
-        mask_id_not_zero = new_agent_info[:, 0, 0] != 0
+        mask_id_not_zero = new_agent_info[:, 0] != 0
         new_agent_info = new_agent_info[mask_id_not_zero]
-        new_agent_info = new_agent_info[:, :, 1:]
+        new_agent_info = new_agent_info[:, 1:]
 
-        # Transpose dimensions from (agent, time, feature) to (time, agent, feature)
-        return np.transpose(new_agent_info, (1, 0, 2))
+        return new_agent_info
 
     @staticmethod
     def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray) -> np.ndarray:
@@ -260,17 +259,16 @@ class AgentFeatureParser:
         Build a dictionary mapping agent id to its attribute data, then iterate over agent_info to append the corresponding attributes.
         """
         id_to_data = {row[0]: row[1:] for row in agent_attr}
-        new_last_dim = agent_info.shape[2] + agent_attr.shape[1] - 1
-        new_agent_info = np.full((agent_info.shape[0], agent_info.shape[1], new_last_dim), -300., dtype=float)
+        new_last_dim = agent_info.shape[1] + agent_attr.shape[1] - 1
+        new_agent_info = np.full((agent_info.shape[0], new_last_dim), -300., dtype=float)
         for i in range(agent_info.shape[0]):
-            for j in range(agent_info.shape[1]):
-                current_id = agent_info[i, j, 0]
-                if current_id == -300:
-                    continue
-                if current_id not in id_to_data:
-                    raise ValueError(f"Agent attribute not found for id: {current_id}")
-                extra_data = id_to_data[current_id]
-                new_agent_info[i, j] = np.concatenate([agent_info[i, j], extra_data])
+            current_id = agent_info[i, 0]
+            if current_id == -300:
+                continue
+            if current_id not in id_to_data:
+                raise ValueError(f"Agent attribute not found for id: {current_id}")
+            extra_data = id_to_data[current_id]
+            new_agent_info[i] = np.concatenate([agent_info[i], extra_data])
         return new_agent_info
 
     @staticmethod
@@ -278,64 +276,62 @@ class AgentFeatureParser:
         """
         Compute the absolute distance between each agent and ego, and append it as a new feature.
         """
-        ids = data[:, 0, 0]
+        ids = data[:, 0]
         ego_idx_arr = np.where(ids == 0)[0]
         if ego_idx_arr.size == 0:
             raise ValueError("Ego not found in agent data")
         idx_ego = ego_idx_arr[0]
 
         # Get ego x, y positions over time.
-        ego_x = data[idx_ego, :, 1]
-        ego_y = data[idx_ego, :, 2]
+        ego_x = data[idx_ego, 1]
+        ego_y = data[idx_ego, 2]
         # Calculate Euclidean distances for each agent relative to ego at each time step.
-        distances = np.sqrt((data[:, :, 1] - ego_x[None, :]) ** 2 + (data[:, :, 2] - ego_y[None, :]) ** 2)
-        distances = distances[:, :, None]
+        distances = np.sqrt((data[:, 1] - ego_x) ** 2 + (data[:, 2] - ego_y) ** 2)
+        distances = distances[:, None]
 
         # Set distance to -300 for invalid positions.
-        invalid_mask = np.any(data[:, :, 1:3] == -300, axis=2)
+        invalid_mask = np.any(data[:, 1:3] == -300, axis=1)
         distances[invalid_mask] = -300
 
-        return np.concatenate([data, distances], axis=2)
+        return np.concatenate([data, distances], axis=1)
 
     def _append_min_polygon_distance(self, data: np.ndarray) -> np.ndarray:
         """
         Compute the minimum distance between the bounding boxes of each agent and the ego vehicle,
         and append this value as a new feature.
         """
-        ids = data[:, 0, 0]
+        ids = data[:, 0]
         ego_idx_arr = np.where(ids == 0)[0]
         if ego_idx_arr.size == 0:
             raise ValueError("Ego information not found for bounding box distance computation")
         idx_ego = ego_idx_arr[0]
 
-        num_agents, T, _ = data.shape
+        num_agents, _ = data.shape
 
         # Precompute ego bounding boxes for each valid time step to avoid redundant calculations.
-        ego_bboxes = [None] * T
-        for t in range(T):
-            if data[idx_ego, t, 1] == -300 or data[idx_ego, t, 2] == -300:
-                ego_bboxes[t] = None
-            else:
-                ego_x, ego_y = data[idx_ego, t, 1], data[idx_ego, t, 2]
-                ego_theta, ego_L, ego_W = data[idx_ego, t, 3], data[idx_ego, t, 6], data[idx_ego, t, 7]
-                ego_bboxes[t] = self._get_bbox(ego_x, ego_y, ego_theta, ego_L, ego_W, is_ego=True)
+        ego_bboxes = [None]
+        if data[idx_ego, 1] == -300 or data[idx_ego, 2] == -300:
+            ego_bboxes = None
+        else:
+            ego_x, ego_y = data[idx_ego, 1], data[idx_ego, 2]
+            ego_theta, ego_L, ego_W = data[idx_ego, 3], data[idx_ego, 6], data[idx_ego, 7]
+            ego_bboxes = self._get_bbox(ego_x, ego_y, ego_theta, ego_L, ego_W, is_ego=True)
 
-        min_dists = np.full((num_agents, T), -300., dtype=float)
+        min_dists = np.full(num_agents, -300., dtype=float)
         for obj in range(num_agents):
-            for t in range(T):
-                if ego_bboxes[t] is None or data[obj, t, 1] == -300 or data[obj, t, 2] == -300:
-                    continue
+            if ego_bboxes is None or data[obj, 1] == -300 or data[obj, 2] == -300:
+                continue
 
-                obj_x, obj_y = data[obj, t, 1], data[obj, t, 2]
-                obj_theta, obj_L, obj_W = data[obj, t, 3], data[obj, t, 6], data[obj, t, 7]
-                # Compute object's bounding box.
-                obj_bbox = self._get_bbox(obj_x, obj_y, obj_theta, obj_L, obj_W)
-                # Compute minimum distance between ego and object bounding boxes.
-                d = self._min_distance_between_polygons(ego_bboxes[t], obj_bbox)
-                min_dists[obj, t] = d
+            obj_x, obj_y = data[obj, 1], data[obj, 2]
+            obj_theta, obj_L, obj_W = data[obj, 3], data[obj, 6], data[obj, 7]
+            # Compute object's bounding box.
+            obj_bbox = self._get_bbox(obj_x, obj_y, obj_theta, obj_L, obj_W)
+            # Compute minimum distance between ego and object bounding boxes.
+            d = self._min_distance_between_polygons(ego_bboxes, obj_bbox)
+            min_dists[obj] = d
 
-        min_dists = min_dists[:, :, None]
-        return np.concatenate([data, min_dists], axis=2)
+        min_dists = min_dists[:, None]
+        return np.concatenate([data, min_dists], axis=1)
 
     @staticmethod
     def _get_bbox(x: float, y: float, theta: float, L: float, W: float, is_ego: bool = False) -> np.ndarray:
