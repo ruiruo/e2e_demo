@@ -31,11 +31,6 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         self.trajectories_gt = []
         self.trajectories_goals = []
         self.trajectories_agent_info = []
-        # TODO: for eval
-        self.trajectories_raw = []
-        self.trajectories_gt_raw = []
-        self.error_under_12 = []
-        self.error_over_12 = []
         self.task_index_list = {}
         self.create_gt_data()
 
@@ -73,7 +68,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         for task_index, task_path in tqdm.tqdm(enumerate(all_tasks)):
             # task iteration
             # todo, could be mutil process
-            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg.max_frame)
+            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg)
             for traje_id, trajectory in enumerate(traje_info_obj.trajectories):
 
                 if self.cfg.multi_agent_info:
@@ -93,27 +88,10 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                     self.trajectories_gt.append(labels)
                     self.trajectories_goals.append(np.array([self.local2token[goal_info]]))
                     self.trajectories_agent_info.append(agent_info)
-                    # TODO: move those computing to TrajectoryInfoParser
-                    # self.trajectories_raw.append(ego_pose)
-                    # self.trajectories_gt_raw.append(ego_pose[1:] + self.EOS_token)
-                    # self._calc_error_with_token(trajectory.info["ego_info"], ego_token)
                 id_e += 1
             self.task_index_list[task_index] = [id_s, id_e]
             id_s, id_e = id_e, id_e
-        # print(sum(self.error_under_12) / len(self.error_under_12), sum(self.error_over_12) / len(self.error_over_12))
-        # print(self.error_under_12, self.error_over_12)
         self.format_transform()
-
-    def _calc_error_with_token(self, raw_data: np.ndarray, ego_token: np.ndarray):
-        ego_raw_traj = raw_data[:, 0:2]
-        if ego_raw_traj[-1, 0] < 12:
-            ego_traj_with_token = detokenize_traj_waypoints(ego_token, self.detokenizer)
-            token_error = TrajectoryDistance(ego_traj_with_token, ego_raw_traj)
-            self.error_under_12.append(token_error.get_l2_distance())
-        else:
-            ego_traj_with_token = detokenize_traj_waypoints(ego_token, self.detokenizer)
-            token_error = TrajectoryDistance(ego_traj_with_token, ego_raw_traj)
-            self.error_over_12.append(token_error.get_l2_distance())
 
     def _get_all_tasks(self):
         all_tasks = []
