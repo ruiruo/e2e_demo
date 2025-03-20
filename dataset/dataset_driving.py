@@ -73,7 +73,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         for task_index, task_path in tqdm.tqdm(enumerate(all_tasks)):
             # task iteration
             # todo, could be mutil process
-            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.local2token, self.cfg)
+            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg.max_frame)
             for traje_id, trajectory in enumerate(traje_info_obj.trajectories):
 
                 if self.cfg.multi_agent_info:

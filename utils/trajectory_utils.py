@@ -125,6 +125,7 @@ def detokenize_traj_waypoints(token_ids, token2local):
     return np.array(result)
 
 
+
 def plot_trajectory_with_time(ego_info: np.ndarray):
     """
     Plots the trajectory using the ego_info array and annotates each point with its time information.
@@ -214,17 +215,22 @@ class TopologyHistory:
         formatted as (x, y, heading, v, acc).
         """
         # Extract the required columns.
-        # TODO: The frame interval is unstable, varying between 100ms and 200ms.
         # Consider whether to use frame extraction or direct cropping.
         ego_info = ego_history[:, 2:7].copy()
         # Align the starting position of the ego vehicle to (0, 0).
         mask = ~np.any(ego_info[:, :2] == -300, axis=1)
         ego_info[mask, :2] -= ego_info[0, :2]
-        ego_pose = ego_info[:, 0:2]
-        ego_token = tokenize_traj_waypoints(ego_pose,
-                                            self.cfg.x_boundaries, self.cfg.y_boundaries,
-                                            self.local2token)
-        self.info["ego_info"] = np.concatenate([np.expand_dims(ego_token, 1), ego_info[:, 2:]], axis=1)
+
+        # TODO: change the clamp value to in coming parameter
+        # For x coordinate: clip to [-10, 40] if value is not -300.
+        mask_x = ego_info[:, 0] != -300
+        ego_info[mask_x, 0] = np.clip(ego_info[mask_x, 0], -10, 40)
+
+        # For y coordinate: clip to [-10, 10] if value is not -300.
+        mask_y = ego_info[:, 1] != -300
+        ego_info[mask_y, 1] = np.clip(ego_info[mask_y, 1], -10, 10)
+
+        self.info["ego_info"] = ego_info
 
 
 class AgentFeatureParser:
@@ -439,13 +445,11 @@ class AgentFeatureParser:
 
 
 class TrajectoryInfoParser:
-    def __init__(self, task_index, task_path, local2token, cfg: Configuration):
-        self.cfg = cfg
+    def __init__(self, task_index, task_path, max_frame):
         self.task_index = task_index
         self.task_path = task_path
         self.total_trajectory = 0
-        self.max_frame = self.cfg.max_frame
-        self.local2token = local2token
+        self.max_frame = max_frame
         self.trajectories = []
         self._get_data()
 
@@ -574,7 +578,6 @@ class TrajectoryInfoParser:
         data['agent_feature'] = new_agent_feature
 
         return data
-
 
 # TODO: eval it
 class TrajectoryDistance:

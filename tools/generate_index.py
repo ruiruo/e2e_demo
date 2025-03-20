@@ -77,11 +77,11 @@ def build_2d_boundaries(x_min, x_max, y_min, y_max):
     # y-axis: piecewise from [-5, -2, 2, 5]
     y_boundary = piecewise_boundaries_1d(
         overall_min=y_min, overall_max=y_max,
-        uniform_left=-2, uniform_right=2,
-        uniform_segments=11,  # also odd => center interval is y=0
+        uniform_left=-3, uniform_right=3,
+        uniform_segments=15,  # also odd => center interval is y=0
         arcsinh_alpha=3.0,
-        arcsinh_points_neg=7,
-        arcsinh_points_pos=8,
+        arcsinh_points_neg=9,
+        arcsinh_points_pos=11,
     )
 
     return x_boundary, y_boundary
@@ -130,7 +130,7 @@ def create_local2token_ndarray(m_boundaries, n_boundaries):
 # Example usage:
 if __name__ == "__main__":
     m_max, m_min = 40, -10
-    n_max, n_min = 5, -5
+    n_max, n_min = 10, -10
 
     x_boundaries, y_boundaries = build_2d_boundaries(m_min, m_max, n_min, n_max)
 
