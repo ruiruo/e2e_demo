@@ -39,6 +39,7 @@ tf_de_dropout: 0.05
 
 ##################### Data #####################
 max_frame: 10
+max_agent: 20
 token_nums: 1200
 bos_token: 443
 eos_token: 1201

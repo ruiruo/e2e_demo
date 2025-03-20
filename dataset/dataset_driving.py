@@ -1,6 +1,7 @@
 from utils.config import Configuration
 from utils.trajectory_utils import TrajectoryInfoParser, TrajectoryDistance
-from utils.trajectory_utils import tokenize_traj_waypoints, parallel_find_bin, create_sample, detokenize_traj_waypoints
+from utils.trajectory_utils import parallel_find_bin, create_sample, detokenize_traj_waypoints
+from types import SimpleNamespace
 import json
 import numpy as np
 import os
@@ -29,7 +30,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         self.trajectories = []
         self.trajectories_gt = []
         self.trajectories_goals = []
-        self.trajectories_features = []
+        self.trajectories_agent_info = []
         # TODO: for eval
         self.trajectories_raw = []
         self.trajectories_gt_raw = []
@@ -53,17 +54,17 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
             - agent_features: (Optional) Agent or background features if available
         """
         # Extract the training sample from the preprocessed arrays based on the index.
-        trajectories = torch.from_numpy(self.trajectories[index])  # shape (11,)
-        labels = torch.from_numpy(self.trajectories_gt[index])  # shape (11,)
-        goal = torch.from_numpy(self.trajectories_goals[index])  # shape (2,)
-        agent_features = torch.from_numpy(self.trajectories_features[index])
-        ego_features = torch.from_numpy(self.ego_info[index])
+        trajectories = torch.from_numpy(self.trajectories[index]).to(torch.int)  # shape (11,)
+        labels = torch.from_numpy(self.trajectories_gt[index]).to(torch.int)  # shape (11,)
+        goal = torch.from_numpy(self.trajectories_goals[index]).to(torch.int)  # shape (2,)
+        agent_info = torch.from_numpy(self.trajectories_agent_info[index]).to(torch.float32)
+        ego_features = torch.from_numpy(self.ego_info[index]).to(torch.float32)
         return {
             "input_ids": trajectories,
             "labels": labels,
-            "goal": goal,
-            "agent_features": agent_features,
+            "agent_info": agent_info,
             "ego_info": ego_features,
+            "goal": goal,
         }
 
     def create_gt_data(self):
@@ -72,36 +73,35 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         for task_index, task_path in tqdm.tqdm(enumerate(all_tasks)):
             # task iteration
             # todo, could be mutil process
-            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg.max_frame)
+            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.local2token, self.cfg)
             for traje_id, trajectory in enumerate(traje_info_obj.trajectories):
-                ego_pose = trajectory.info["ego_info"][:, 0:2]
-                ego_token = tokenize_traj_waypoints(ego_pose,
-                                                    self.x_boundaries, self.y_boundaries,
-                                                    self.local2token)
+
                 if self.cfg.multi_agent_info:
                     # TODO: generate (n-1) * trajectories by multi agent info
                     raise NotImplementedError
                 else:
-                    input_ids, labels, agent_info = create_sample(ego_token, trajectory.info["agent_info"],
+                    input_ids, labels, agent_info = create_sample(trajectory.info["ego_info"][:, 0]
+                                                                  , trajectory.info["agent_info"],
                                                                   self.BOS_token, self.EOS_token,
                                                                   self.PAD_token, self.cfg.max_frame)
                     goal_info = parallel_find_bin(np.expand_dims(trajectory.info["goal_info"], 0),
                                                   self.x_boundaries, self.y_boundaries)
                     goal_info = (int(goal_info[0]), int(goal_info[1]))
-                    self.ego_info.append(trajectory.info["ego_info"][0, 2:])
-                    self.goal_info.append(trajectory.info["ego_info"][-1, 2:])
+                    self.ego_info.append(trajectory.info["ego_info"][0, 1:])
+                    self.goal_info.append(trajectory.info["ego_info"][-1, 1:])
                     self.trajectories.append(input_ids)
                     self.trajectories_gt.append(labels)
                     self.trajectories_goals.append(np.array([self.local2token[goal_info]]))
-                    self.trajectories_features.append(agent_info)
-                    self.trajectories_raw.append(ego_pose)
-                    self.trajectories_gt_raw.append(ego_pose[1:]+self.EOS_token)
-                    self._calc_error_with_token(trajectory.info["ego_info"], ego_token)
+                    self.trajectories_agent_info.append(agent_info)
+                    # TODO: move those computing to TrajectoryInfoParser
+                    # self.trajectories_raw.append(ego_pose)
+                    # self.trajectories_gt_raw.append(ego_pose[1:] + self.EOS_token)
+                    # self._calc_error_with_token(trajectory.info["ego_info"], ego_token)
                 id_e += 1
             self.task_index_list[task_index] = [id_s, id_e]
             id_s, id_e = id_e, id_e
-        print(sum(self.error_under_12)/len(self.error_under_12), sum(self.error_over_12)/len(self.error_over_12))
-        print(self.error_under_12, self.error_over_12)
+        # print(sum(self.error_under_12) / len(self.error_under_12), sum(self.error_over_12) / len(self.error_over_12))
+        # print(self.error_under_12, self.error_over_12)
         self.format_transform()
 
     def _calc_error_with_token(self, raw_data: np.ndarray, ego_token: np.ndarray):
@@ -110,7 +110,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
             ego_traj_with_token = detokenize_traj_waypoints(ego_token, self.detokenizer)
             token_error = TrajectoryDistance(ego_traj_with_token, ego_raw_traj)
             self.error_under_12.append(token_error.get_l2_distance())
-        else :
+        else:
             ego_traj_with_token = detokenize_traj_waypoints(ego_token, self.detokenizer)
             token_error = TrajectoryDistance(ego_traj_with_token, ego_raw_traj)
             self.error_over_12.append(token_error.get_l2_distance())

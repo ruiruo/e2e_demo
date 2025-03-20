@@ -39,3 +39,26 @@ class SelfStateEncoder(nn.Module):
         # Apply dynamic activation using tanh
         out = torch.tanh(gamma * pos_emb + beta)  # (B, pos_dim)
         return out
+
+
+class BackgroundEncoder(nn.Module):
+    def __init__(self, pos_dim=256, feat_dim=7, bert_hidden=256, pm_local=5):
+        super(BackgroundEncoder, self).__init__()
+        # Generate (gamma, beta) where the input has feat_dim and the output is 2 * pos_dim
+        self.pos_bert = nn.TransformerEncoder(
+            num_layers=2,
+            # maybe dyna Tanh ?
+            norm=nn.LayerNorm(feat_dim))
+
+    def forward(self, agent_emb, features):
+        # agent_emb = (bz, agent, embed)
+        # features = (bz, agent, [token, heading, v, acc, length, width, abs_dis, hit_dis])
+
+
+        gamma_beta = self.param_gen(features)  # shape: (B, 2*pos_dim)
+        gamma, beta = gamma_beta.chunk(2, dim=-1)  # each of shape (B, pos_dim)
+
+        # apply cross
+
+
+        return out

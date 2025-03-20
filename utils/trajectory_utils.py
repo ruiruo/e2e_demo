@@ -1,6 +1,7 @@
 from shapely.geometry import LineString
 from shapely.measurement import hausdorff_distance
 from typing import List
+from utils.config import Configuration
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -25,7 +26,7 @@ def create_sample(ego_tokens, agent_info, bos_token, eos_token, pad_token, targe
         agent_info (Any): The background agent information, unchanged.
     """
     # Build the ego trajectory with BOS and EOS tokens.
-    trajectory = np.concatenate([np.array([bos_token]), ego_tokens, np.array([eos_token])])
+    trajectory = np.concatenate([np.array([bos_token]), ego_tokens[1:], np.array([eos_token])])
     # Calculate the number of PAD tokens needed to reach the target sequence length.
     n_pad = max(0, target_seq_len - len(trajectory))
     trajectory = np.concatenate([trajectory, np.array([pad_token] * n_pad)])
@@ -124,7 +125,6 @@ def detokenize_traj_waypoints(token_ids, token2local):
     return np.array(result)
 
 
-
 def plot_trajectory_with_time(ego_info: np.ndarray):
     """
     Plots the trajectory using the ego_info array and annotates each point with its time information.
@@ -164,11 +164,14 @@ class TopologyHistory:
     Encapsulated raw Topology History information.
     """
 
-    def __init__(self, frame_id: int, feature: dict, max_frame: int=10):
+    def __init__(self, cfg: Configuration, frame_id: int, feature: dict, local2token):
         # ego_info = (t, 5), (t_-50, t_0), (x, y, heading, v, acc)
         # agent_info = (t, agent, 10), (t_-50, t_0), (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
+        self.cfg = cfg
+        self.max_frame = cfg.max_frame
+        self.max_agent = cfg.max_agent
         self.frame_id = frame_id
-        self.max_frame = max_frame
+        self.local2token = local2token
         self.info = {}
         self._preprocess(feature)
 
@@ -180,11 +183,30 @@ class TopologyHistory:
 
     def _cut(self):
         self.info["ego_info"] = self.info["ego_info"][-self.max_frame - 1:-1, :]
-        self.info["agent_info"] = self.info["agent_info"][-self.max_frame - 1:-1, :]
+        self.info["agent_info"] = self.info["agent_info"]
 
     def _preprocess_agent(self, feature):
-        parser = AgentFeatureParser(feature)
-        self.info["agent_info"] = parser.preprocess()
+        # TODO: Why we need to process all timestamp here ?
+        parser = AgentFeatureParser(self.cfg, feature)
+        agent_info = parser.preprocess()
+        agent_pose = agent_info[0, :, 0:2]
+        agent_info = agent_info[0, :, 2:]
+        agent_tokenized = tokenize_traj_waypoints(agent_pose,
+                                                  np.array(self.cfg.x_boundaries),
+                                                  np.array(self.cfg.y_boundaries),
+                                                  self.local2token)
+        agent_info = np.concatenate([np.expand_dims(agent_tokenized, 1), agent_info], axis=1)
+        valid_rows = agent_info[agent_info[:, 0] != -1]
+        n_valid = valid_rows.shape[0]
+        n_features = agent_info.shape[1]
+
+        if n_valid >= self.max_agent:
+            agent_organized = valid_rows[:self.max_agent, :]
+        else:
+            pad = np.full((self.max_agent - n_valid, n_features), -1, dtype=agent_info.dtype)
+            agent_organized = np.vstack((valid_rows, pad))
+
+        self.info["agent_info"] = agent_organized
 
     def _preprocess_ego(self, ego_history):
         """
@@ -198,8 +220,11 @@ class TopologyHistory:
         # Align the starting position of the ego vehicle to (0, 0).
         mask = ~np.any(ego_info[:, :2] == -300, axis=1)
         ego_info[mask, :2] -= ego_info[0, :2]
-
-        self.info["ego_info"] = ego_info
+        ego_pose = ego_info[:, 0:2]
+        ego_token = tokenize_traj_waypoints(ego_pose,
+                                            self.cfg.x_boundaries, self.cfg.y_boundaries,
+                                            self.local2token)
+        self.info["ego_info"] = np.concatenate([np.expand_dims(ego_token, 1), ego_info[:, 2:]], axis=1)
 
 
 class AgentFeatureParser:
@@ -212,7 +237,8 @@ class AgentFeatureParser:
       - 'agent_attribute_feature': Attribute features of agents (array)
     """
 
-    def __init__(self, feature: dict):
+    def __init__(self, cfg: Configuration, feature: dict):
+        self.cfg = cfg
         required_keys = ['ego_history_feature', 'agent_feature', 'agent_attribute_feature']
         for key in required_keys:
             if key not in feature:
@@ -230,9 +256,9 @@ class AgentFeatureParser:
             (s_id, id, x, y, heading, v, acc, timestamp)
         """
         # 1. Extract necessary columns and align with ego position bias.
-        agent_info = self.agent[:, 0, 1:7].copy()
+        agent_info = self.agent[:, :, 1:7].copy()
         agent_attr = self.agent_attribute[:, :3]
-        mask = ~np.any(agent_info[:, 1:3] == -300, axis=1)
+        mask = ~np.any(agent_info[:, :, 1:3] == -300, axis=2)
         agent_info[mask, 1:3] -= self.pos_bias
 
         # 2. Concatenate agent attributes to agent_info.
@@ -245,11 +271,12 @@ class AgentFeatureParser:
         new_agent_info = self._append_min_polygon_distance(new_agent_info)
 
         # 5. Remove agents with id == 0 and id col
-        mask_id_not_zero = new_agent_info[:, 0] != 0
+        mask_id_not_zero = new_agent_info[:, 0, 0] != 0
         new_agent_info = new_agent_info[mask_id_not_zero]
-        new_agent_info = new_agent_info[:, 1:]
+        new_agent_info = new_agent_info[:, :, 1:]
 
-        return new_agent_info
+        # Transpose dimensions from (agent, time, feature) to (time, agent, feature)
+        return np.transpose(new_agent_info, (1, 0, 2))
 
     @staticmethod
     def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray) -> np.ndarray:
@@ -259,16 +286,17 @@ class AgentFeatureParser:
         Build a dictionary mapping agent id to its attribute data, then iterate over agent_info to append the corresponding attributes.
         """
         id_to_data = {row[0]: row[1:] for row in agent_attr}
-        new_last_dim = agent_info.shape[1] + agent_attr.shape[1] - 1
-        new_agent_info = np.full((agent_info.shape[0], new_last_dim), -300., dtype=float)
+        new_last_dim = agent_info.shape[2] + agent_attr.shape[1] - 1
+        new_agent_info = np.full((agent_info.shape[0], agent_info.shape[1], new_last_dim), -300., dtype=float)
         for i in range(agent_info.shape[0]):
-            current_id = agent_info[i, 0]
-            if current_id == -300:
-                continue
-            if current_id not in id_to_data:
-                raise ValueError(f"Agent attribute not found for id: {current_id}")
-            extra_data = id_to_data[current_id]
-            new_agent_info[i] = np.concatenate([agent_info[i], extra_data])
+            for j in range(agent_info.shape[1]):
+                current_id = agent_info[i, j, 0]
+                if current_id == -300:
+                    continue
+                if current_id not in id_to_data:
+                    raise ValueError(f"Agent attribute not found for id: {current_id}")
+                extra_data = id_to_data[current_id]
+                new_agent_info[i, j] = np.concatenate([agent_info[i, j], extra_data])
         return new_agent_info
 
     @staticmethod
@@ -276,62 +304,64 @@ class AgentFeatureParser:
         """
         Compute the absolute distance between each agent and ego, and append it as a new feature.
         """
-        ids = data[:, 0]
+        ids = data[:, 0, 0]
         ego_idx_arr = np.where(ids == 0)[0]
         if ego_idx_arr.size == 0:
             raise ValueError("Ego not found in agent data")
         idx_ego = ego_idx_arr[0]
 
         # Get ego x, y positions over time.
-        ego_x = data[idx_ego, 1]
-        ego_y = data[idx_ego, 2]
+        ego_x = data[idx_ego, :, 1]
+        ego_y = data[idx_ego, :, 2]
         # Calculate Euclidean distances for each agent relative to ego at each time step.
-        distances = np.sqrt((data[:, 1] - ego_x) ** 2 + (data[:, 2] - ego_y) ** 2)
-        distances = distances[:, None]
+        distances = np.sqrt((data[:, :, 1] - ego_x[None, :]) ** 2 + (data[:, :, 2] - ego_y[None, :]) ** 2)
+        distances = distances[:, :, None]
 
         # Set distance to -300 for invalid positions.
-        invalid_mask = np.any(data[:, 1:3] == -300, axis=1)
+        invalid_mask = np.any(data[:, :, 1:3] == -300, axis=2)
         distances[invalid_mask] = -300
 
-        return np.concatenate([data, distances], axis=1)
+        return np.concatenate([data, distances], axis=2)
 
     def _append_min_polygon_distance(self, data: np.ndarray) -> np.ndarray:
         """
         Compute the minimum distance between the bounding boxes of each agent and the ego vehicle,
         and append this value as a new feature.
         """
-        ids = data[:, 0]
+        ids = data[:, 0, 0]
         ego_idx_arr = np.where(ids == 0)[0]
         if ego_idx_arr.size == 0:
             raise ValueError("Ego information not found for bounding box distance computation")
         idx_ego = ego_idx_arr[0]
 
-        num_agents, _ = data.shape
+        num_agents, T, _ = data.shape
 
         # Precompute ego bounding boxes for each valid time step to avoid redundant calculations.
-        ego_bboxes = [None]
-        if data[idx_ego, 1] == -300 or data[idx_ego, 2] == -300:
-            ego_bboxes = None
-        else:
-            ego_x, ego_y = data[idx_ego, 1], data[idx_ego, 2]
-            ego_theta, ego_L, ego_W = data[idx_ego, 3], data[idx_ego, 6], data[idx_ego, 7]
-            ego_bboxes = self._get_bbox(ego_x, ego_y, ego_theta, ego_L, ego_W, is_ego=True)
+        ego_bboxes = [None] * T
+        for t in range(T):
+            if data[idx_ego, t, 1] == -300 or data[idx_ego, t, 2] == -300:
+                ego_bboxes[t] = None
+            else:
+                ego_x, ego_y = data[idx_ego, t, 1], data[idx_ego, t, 2]
+                ego_theta, ego_L, ego_W = data[idx_ego, t, 3], data[idx_ego, t, 6], data[idx_ego, t, 7]
+                ego_bboxes[t] = self._get_bbox(ego_x, ego_y, ego_theta, ego_L, ego_W, is_ego=True)
 
-        min_dists = np.full(num_agents, -300., dtype=float)
+        min_dists = np.full((num_agents, T), -300., dtype=float)
         for obj in range(num_agents):
-            if ego_bboxes is None or data[obj, 1] == -300 or data[obj, 2] == -300:
-                continue
+            for t in range(T):
+                if ego_bboxes[t] is None or data[obj, t, 1] == -300 or data[obj, t, 2] == -300:
+                    continue
 
-            obj_x, obj_y = data[obj, 1], data[obj, 2]
-            obj_theta, obj_L, obj_W = data[obj, 3], data[obj, 6], data[obj, 7]
-            # Compute object's bounding box.
-            obj_bbox = self._get_bbox(obj_x, obj_y, obj_theta, obj_L, obj_W)
-            # Compute minimum distance between ego and object bounding boxes.
-            d = self._min_distance_between_polygons(ego_bboxes, obj_bbox)
-            min_dists[obj] = d
+                obj_x, obj_y = data[obj, t, 1], data[obj, t, 2]
+                obj_theta, obj_L, obj_W = data[obj, t, 3], data[obj, t, 6], data[obj, t, 7]
+                # Compute object's bounding box.
+                obj_bbox = self._get_bbox(obj_x, obj_y, obj_theta, obj_L, obj_W)
+                # Compute minimum distance between ego and object bounding boxes.
+                d = self._min_distance_between_polygons(ego_bboxes[t], obj_bbox)
+                min_dists[obj, t] = d
 
-        min_dists = min_dists[:, None]
-        return np.concatenate([data, min_dists], axis=1)
+        min_dists = min_dists[:, :, None]
+        return np.concatenate([data, min_dists], axis=2)
 
     @staticmethod
     def _get_bbox(x: float, y: float, theta: float, L: float, W: float, is_ego: bool = False) -> np.ndarray:
@@ -409,11 +439,13 @@ class AgentFeatureParser:
 
 
 class TrajectoryInfoParser:
-    def __init__(self, task_index, task_path, max_frame):
+    def __init__(self, task_index, task_path, local2token, cfg: Configuration):
+        self.cfg = cfg
         self.task_index = task_index
         self.task_path = task_path
         self.total_trajectory = 0
-        self.max_frame = max_frame
+        self.max_frame = self.cfg.max_frame
+        self.local2token = local2token
         self.trajectories = []
         self._get_data()
 
@@ -425,8 +457,8 @@ class TrajectoryInfoParser:
                 if not data:
                     continue
 
-                # TODO: case_id细分
-                case_id = int(each.replace(".pkl", ""))
+                # TODO: create frame_id by case_id
+                # case_id = int(each.replace(".pkl", ""))
                 ego_history = data['ego_history_feature']
                 agent_feature = data['agent_feature']
                 slice_length = ego_history.shape[0]
@@ -435,11 +467,17 @@ class TrajectoryInfoParser:
                     end_idx = start_idx + self.max_frame + 1
                     ego_window = ego_history[start_idx:end_idx]
                     agent_window = agent_feature[:, start_idx:end_idx, :]
-                    self.trajectories.append(TopologyHistory(case_id, {
-                        "ego_history_feature": ego_window,
-                        "agent_feature": agent_window,
-                        "agent_attribute_feature": data["agent_attribute_feature"]},
-                                                             self.max_frame))
+                    topology_history = TopologyHistory(
+                        cfg=self.cfg,
+                        frame_id=self.total_trajectory,
+                        feature={
+                            "ego_history_feature": ego_window,
+                            "agent_feature": agent_window,
+                            "agent_attribute_feature": data["agent_attribute_feature"]
+                        },
+                        local2token=self.local2token
+                    )
+                    self.trajectories.append(topology_history)
                     self.total_trajectory += 1
 
     def _filter_useful_slice(self, data: dict) -> dict:
@@ -476,10 +514,11 @@ class TrajectoryInfoParser:
             return {}
         slice_length = slice_start - slice_end
         if slice_length < self.max_frame:
-            print(f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
+            print(
+                f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
             return {}
 
-        ego_history = ego_history[slice_end : slice_start][::-1]
+        ego_history = ego_history[slice_end: slice_start][::-1]
 
         new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]),
                                     fill_value=-300.)
@@ -490,11 +529,13 @@ class TrajectoryInfoParser:
         # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
         for col in [2, 3, 5]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-3, 0, ego_history[:, col])
-            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0, data['agent_feature'][:, :, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-3, 0,
+                                                        data['agent_feature'][:, :, col])
         # Threshold for [heading, acc]: set values with absolute value < 1e-3 to 0.
         for col in [4, 6]:
             ego_history[:, col] = np.where(np.abs(ego_history[:, col]) < 1e-5, 0, ego_history[:, col])
-            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0, data['agent_feature'][:, :, col])
+            data['agent_feature'][:, :, col] = np.where(np.abs(data['agent_feature'][:, :, col]) < 1e-5, 0,
+                                                        data['agent_feature'][:, :, col])
 
         slice_start = None
         slice_end = ego_history.shape[0]
@@ -533,6 +574,7 @@ class TrajectoryInfoParser:
         data['agent_feature'] = new_agent_feature
 
         return data
+
 
 # TODO: eval it
 class TrajectoryDistance:

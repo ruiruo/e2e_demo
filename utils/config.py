@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List
 import torch
 import yaml
+import numpy as np
 from loguru import logger
 
 
@@ -18,6 +19,7 @@ class Configuration:
     detokenizer: str
     multi_agent_info: bool
     max_frame: int
+    max_agent: int
     # Basic Options
     data_mode: str
     num_gpus: int
@@ -46,8 +48,8 @@ class Configuration:
     tf_de_dropout: float
 
     # Tokenizer
-    x_boundaries: List
-    y_boundaries: List
+    x_boundaries: List | np.ndarray
+    y_boundaries: List | np.ndarray
     bos_token: int
     eos_token: int
     pad_token: int
@@ -81,6 +83,8 @@ def get_train_config_obj(config_path: str):
             config_obj = Configuration(**config_yaml)
             config_obj.config_path = config_path
             config_obj.log_dir = os.path.join(config_obj.log_root_dir, exp_name)
+            config_obj.x_boundaries = np.array(config_obj.x_boundaries)
+            config_obj.y_boundaries = np.array(config_obj.y_boundaries)
             config_obj.checkpoint_dir = os.path.join(config_obj.checkpoint_root_dir, exp_name)
         except yaml.YAMLError:
             logger.exception("Open {} failed!", config_path)
