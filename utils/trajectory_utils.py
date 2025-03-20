@@ -165,8 +165,8 @@ class TopologyHistory:
     """
 
     def __init__(self, frame_id: int, feature: dict, max_frame: int=10):
-        # ego_info = (t, 5), (t_-50, t_0), (x, y, heading, v, acc)
-        # agent_info = (t, agent, 10), (t_-50, t_0), (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
+        # ego_info = (t, 5), (t_0, t_10), (x, y, heading, v, acc)
+        # agent_info = (t, agent, 10), (t_0), (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
         self.frame_id = frame_id
         self.max_frame = max_frame
         self.info = {}
@@ -192,12 +192,20 @@ class TopologyHistory:
         formatted as (x, y, heading, v, acc).
         """
         # Extract the required columns.
-        # TODO: The frame interval is unstable, varying between 100ms and 200ms.
         # Consider whether to use frame extraction or direct cropping.
         ego_info = ego_history[:, 2:7].copy()
         # Align the starting position of the ego vehicle to (0, 0).
         mask = ~np.any(ego_info[:, :2] == -300, axis=1)
         ego_info[mask, :2] -= ego_info[0, :2]
+
+        # TODO: change the clamp value to in coming parameter
+        # For x coordinate: clip to [-10, 40] if value is not -300.
+        mask_x = ego_info[:, 0] != -300
+        ego_info[mask_x, 0] = np.clip(ego_info[mask_x, 0], -10, 40)
+
+        # For y coordinate: clip to [-10, 10] if value is not -300.
+        mask_y = ego_info[:, 1] != -300
+        ego_info[mask_y, 1] = np.clip(ego_info[mask_y, 1], -10, 10)
 
         self.info["ego_info"] = ego_info
 
@@ -248,6 +256,18 @@ class AgentFeatureParser:
         mask_id_not_zero = new_agent_info[:, 0] != 0
         new_agent_info = new_agent_info[mask_id_not_zero]
         new_agent_info = new_agent_info[:, 1:]
+
+        # 6. Ensure that the first dimension (number of agents) is exactly 20.
+        # TODO: change target_n value to in coming parameter
+        target_n = 20
+        n_agents = new_agent_info.shape[0]
+        if n_agents > target_n:
+            # If there are more than 20 agents, crop to the first 20.
+            new_agent_info = new_agent_info[:target_n, :]
+        elif n_agents < target_n:
+            # If fewer than 20, pad the remaining rows with -300.
+            pad = np.full((target_n - n_agents, new_agent_info.shape[1]), -300, dtype=new_agent_info.dtype)
+            new_agent_info = np.concatenate([new_agent_info, pad], axis=0)
 
         return new_agent_info
 

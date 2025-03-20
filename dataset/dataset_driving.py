@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from utils.config import Configuration
 from utils.trajectory_utils import TrajectoryInfoParser, TrajectoryDistance
 from utils.trajectory_utils import tokenize_traj_waypoints, parallel_find_bin, create_sample, detokenize_traj_waypoints
@@ -96,12 +97,12 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                     self.trajectories_features.append(agent_info)
                     self.trajectories_raw.append(ego_pose)
                     self.trajectories_gt_raw.append(ego_pose[1:]+self.EOS_token)
-                    self._calc_error_with_token(trajectory.info["ego_info"], ego_token)
+                    # self._calc_error_with_token(trajectory.info["ego_info"], ego_token)
                 id_e += 1
             self.task_index_list[task_index] = [id_s, id_e]
             id_s, id_e = id_e, id_e
-        print(sum(self.error_under_12)/len(self.error_under_12), sum(self.error_over_12)/len(self.error_over_12))
-        print(self.error_under_12, self.error_over_12)
+        # print(sum(self.error_under_12)/len(self.error_under_12), sum(self.error_over_12)/len(self.error_over_12))
+        # print(self.error_under_12, self.error_over_12)
         self.format_transform()
 
     def _calc_error_with_token(self, raw_data: np.ndarray, ego_token: np.ndarray):
