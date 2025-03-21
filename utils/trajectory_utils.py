@@ -196,29 +196,47 @@ class TopologyHistory:
     def _preprocess_agent(self, feature):
         parser = AgentFeatureParser(self.cfg, feature)
         agent_info = parser.preprocess()
-        self.agent_raw_pos = agent_info[:, 0:2]
-        agent_info = agent_info[:, 2:]
-        agent_tokenized = tokenize_traj_waypoints(self.agent_raw_pos,
-                                                  np.array(self.cfg.x_boundaries),
-                                                  np.array(self.cfg.y_boundaries),
-                                                  self.local2token)
-        agent_info = np.concatenate([np.expand_dims(agent_tokenized, 1), agent_info], axis=1)
-        valid_rows = agent_info[agent_info[:, 0] != -1]
-        n_valid = valid_rows.shape[0]
-        n_features = agent_info.shape[1]
+        if agent_info.ndim == 2:
+            agent_info = agent_info[np.newaxis, ...]
 
-        # Update self.agent_raw_pos to only include valid rows.
-        valid_mask = agent_info[:, 0] != -1
-        valid_rows = agent_info[valid_mask]
-        self.agent_raw_pos = self.agent_raw_pos[valid_mask]
+        T, A, attr = agent_info.shape
 
-        if n_valid >= self.max_agent:
-            agent_organized = valid_rows[:self.max_agent, :]
-        else:
-            pad = np.full((self.max_agent - n_valid, n_features), -1, dtype=agent_info.dtype)
-            agent_organized = np.vstack((valid_rows, pad))
+        self.agent_raw_pos = agent_info[:, :, 0:2].copy()
 
-        self.info["agent_info"] = agent_organized
+        agent_raw_pos_flat = self.agent_raw_pos.reshape(-1, 2)
+        tokenized_flat = tokenize_traj_waypoints(agent_raw_pos_flat,
+                                                 np.array(self.cfg.x_boundaries),
+                                                 np.array(self.cfg.y_boundaries),
+                                                 self.local2token)
+        agent_tokenized = tokenized_flat.reshape(T, A)
+
+        agent_features = agent_info[:, :, 2:]
+        agent_info_final = np.concatenate([agent_tokenized[..., np.newaxis], agent_features], axis=-1)
+
+        agent_info_list = []
+        agent_raw_pos_list = []
+        for t in range(T):
+            valid_mask = agent_info_final[t, :, 0] != -1
+            valid_rows = agent_info_final[t, valid_mask, :]
+            valid_raw_pos = self.agent_raw_pos[t, valid_mask, :]
+            n_valid = valid_rows.shape[0]
+            if n_valid >= self.max_agent:
+                agent_organized = valid_rows[:self.max_agent, :]
+                raw_pos_organized = valid_raw_pos[:self.max_agent, :]
+            else:
+                pad_agent = np.full((self.max_agent - n_valid, agent_info_final.shape[-1]), -1,
+                                    dtype=agent_info_final.dtype)
+                pad_raw_pos = np.full((self.max_agent - n_valid, 2), -1, dtype=self.agent_raw_pos.dtype)
+                agent_organized = np.vstack([valid_rows, pad_agent])
+                raw_pos_organized = np.vstack([valid_raw_pos, pad_raw_pos])
+            agent_info_list.append(agent_organized)
+            agent_raw_pos_list.append(raw_pos_organized)
+
+        final_agent_info = np.stack(agent_info_list, axis=0)
+        final_agent_raw_pos = np.stack(agent_raw_pos_list, axis=0)
+
+        self.info["agent_info"] = final_agent_info
+        self.agent_raw_pos = final_agent_raw_pos
 
     def _preprocess_ego(self, ego_history):
         """
@@ -272,7 +290,7 @@ class AgentFeatureParser:
     def preprocess(self) -> np.ndarray:
         """
         Preprocess agent TopologyHistory information and generate an array with format:
-            (id, x, y, heading, v, acc, length, width, abs_dis, hit_dis)
+            (x, y, heading, v, acc, length, width, abs_dis, hit_dis)
         Original agent_feature format:
             (s_id, id, x, y, heading, v, acc, timestamp)
         """
@@ -304,7 +322,72 @@ class AgentFeatureParser:
         new_agent_info = new_agent_info[mask_id_not_zero]
         new_agent_info = new_agent_info[:, 1:]
 
+        new_agent_info = self._simulate_future_states(new_agent_info)
+
         return new_agent_info
+
+    # TODO: set step 3
+    @staticmethod
+    def _simulate_future_states(agent_info: np.ndarray, dt: float = 0.2, steps: int = 10) -> np.ndarray:
+        """
+        Simulate future states of agents based on their state at t0.
+        State format: [x, y, heading, v, acc, length, width, abs_dis, hit_dis]
+
+        Parameters:
+            agent_info (np.ndarray): Array of shape (n_agents, 9) representing the state at t0.
+            dt (float): Time interval for each step (seconds), default is 0.2 seconds.
+            steps (int): Number of simulation steps (excluding t0), default is 10 steps (i.e., 2 seconds).
+
+        Returns:
+            np.ndarray: Array of shape (steps+1, n_agents, 9), where the 0-th timestep is the initial state.
+                        For subsequent timesteps, x and y are updated using uniform acceleration motion,
+                        while heading, v, acc, and other attributes remain unchanged.
+                        If any agent's state (subarray) contains -300, that agent's state is copied without simulation.
+        """
+        n_agents, n_attr = agent_info.shape
+        total_steps = steps + 1
+        states = np.full((total_steps, n_agents, n_attr), -300, dtype=agent_info.dtype)
+
+        # Set the initial state at t0.
+        states[0] = agent_info.copy()
+
+        # Create a boolean mask: True if the agent (row) does NOT contain -300.
+        valid_mask = ~(agent_info == -300).any(axis=1)
+        invalid_mask = ~valid_mask  # Agents that contain -300.
+
+        # Process valid agents (simulate future movement).
+        if valid_mask.any():
+            valid_indices = np.where(valid_mask)[0]
+            # Extract parameters for valid agents.
+            x0 = agent_info[valid_indices, 0]
+            y0 = agent_info[valid_indices, 1]
+            heading = agent_info[valid_indices, 2]
+            v = agent_info[valid_indices, 3]
+            acc = agent_info[valid_indices, 4]
+            cos_heading = np.cos(heading)
+            sin_heading = np.sin(heading)
+
+            # For each future time step, compute new x and y for valid agents.
+            for i in range(1, total_steps):
+                t = i * dt
+                disp = v * t + 0.5 * acc * t ** 2
+                dx = disp * cos_heading
+                dy = disp * sin_heading
+
+                # Copy the original state and update the x and y coordinates.
+                new_state = agent_info[valid_indices].copy()
+                new_state[:, 0] = x0 + dx
+                new_state[:, 1] = y0 + dy
+
+                states[i, valid_indices, :] = new_state
+
+        # Process invalid agents: replicate their original state for all future timesteps.
+        if invalid_mask.any():
+            invalid_indices = np.where(invalid_mask)[0]
+            for i in range(1, total_steps):
+                states[i, invalid_indices, :] = agent_info[invalid_indices]
+
+        return states
 
     @staticmethod
     def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray) -> np.ndarray:
