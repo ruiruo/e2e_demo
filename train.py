@@ -1,41 +1,25 @@
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary, TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning import Trainer, seed_everything
-from dataset.dataloader import ParkingDataloaderModule
-from model.parking_model_train import ParkingTrainingModuleTrain
-from utils.decorator_train import finish, init
 from utils.config import get_train_config_obj
+from utils.common import setup_callbacks
+from dataset.dataloader import TrajectoryDataloaderModule
+from model.trajectory_generator_train import TrajectoryTrainingModule
+import os
 
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-def decorator_function(train_function):
-    def wrapper_function(*args, **kwargs):
-        init(*args, **kwargs)
-        train_function(*args, **kwargs)
-        finish(*args, **kwargs)
-
-    return wrapper_function
-
-
-def setup_callbacks(cfg_obj):
-    ckpt_callback = ModelCheckpoint(dirpath=cfg_obj.checkpoint_dir,
-                                    monitor='val_loss',
-                                    save_top_k=3,
-                                    mode='min',
-                                    filename='{epoch:02d}-{val_loss:.2f}',
-                                    save_last=True)
-    progress_bar = TQDMProgressBar()
-    model_summary = ModelSummary(max_depth=2)
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
-
-    return [ckpt_callback, progress_bar, model_summary, lr_monitor]
-
-
-# def main(cfg_path):
-cfg_path = "./config.yaml"
+cfg_path = "./configs/training.yaml"
 seed_everything(16)
 config_obj = get_train_config_obj(config_path=cfg_path)
-model = ParkingTrainingModuleTrain(config_obj)
-data = ParkingDataloaderModule(config_obj)
+model = TrajectoryTrainingModule(config_obj)
+
+print(model.gen_model)
+
+data = TrajectoryDataloaderModule(cfg=config_obj)
+data.setup("train")
+train_loader = data.train_loader
+
+print(len(train_loader))
 
 trainer = Trainer(
     callbacks=setup_callbacks(config_obj),
@@ -49,11 +33,5 @@ trainer = Trainer(
     profiler='simple'
 )
 
-trainer.fit(
-    model=model,
-    datamodule=data,
-    ckpt_path=config_obj.resume_path
-)
-
-# if __name__ == '__main__':
-#     main("./config.yaml")
+seed_everything(20)
+trainer.fit(model=model, datamodule=data, ckpt_path=config_obj.resume_path)

@@ -2,26 +2,21 @@ import torch
 import torch.nn as nn
 
 
-class DyTToken(nn.Module):
-    """
-    DyT module for autoregressive token-level usage.
+class DynTanhNorm(nn.Module):
+    """A toy Dynamic Tanh 'norm' that learns gamma,beta from input features."""
 
-    Input x shape: (batch_size, seq_len, hidden_dim).
-    This module computes dynamic scaling (γ) and shifting (β) parameters for each token,
-    and then applies a tanh activation on the result: tanh(γ * x + β).
-    """
-
-    def __init__(self, hidden_dim):
-        super(DyTToken, self).__init__()
-        self.gamma = nn.Linear(hidden_dim, hidden_dim)
-        self.beta = nn.Linear(hidden_dim, hidden_dim)
+    def __init__(self, embed_dim):
+        super(DynTanhNorm, self).__init__()
+        self.param_gen = nn.Linear(embed_dim, 2 * embed_dim)
 
     def forward(self, x):
-        # Compute dynamic parameters for each token
-        gamma = self.gamma(x)  # shape: (batch, seq_len, hidden_dim)
-        beta = self.beta(x)  # shape: (batch, seq_len, hidden_dim)
-        # Apply the dynamic tanh activation
-        return torch.tanh(gamma * x + beta)
+        # x: (batch, seq_len, embed_dim)
+        # generate gamma, beta: (batch, seq_len, embed_dim) each
+        gb = self.param_gen(x)
+        gamma, beta = gb.chunk(2, dim=-1)
+        # apply tanh-based "normalization"
+        out = torch.tanh(gamma * x + beta)
+        return out
 
 
 class DyTHead(nn.Module):
@@ -36,6 +31,7 @@ class DyTHead(nn.Module):
     then concatenates this context with the query tokens to compute dynamic parameters,
     and finally applies the tanh activation: tanh(γ * query + β).
     """
+
     def __init__(self, hidden_dim):
         super(DyTHead, self).__init__()
         # After concatenation, the input dimension is 2 * hidden_dim
