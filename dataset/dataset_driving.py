@@ -49,8 +49,8 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
             - agent_features: (Optional) Agent or background features if available
         """
         # Extract the training sample from the preprocessed arrays based on the index.
-        trajectories = torch.from_numpy(self.trajectories[index]).to(torch.int)  # shape (11,)
-        labels = torch.from_numpy(self.trajectories_gt[index]).to(torch.int)  # shape (11,)
+        trajectories = torch.from_numpy(self.trajectories[index]).to(torch.int)  # shape (10,)
+        labels = torch.from_numpy(self.trajectories_gt[index]).to(torch.int)  # shape (10,)
         goal = torch.from_numpy(self.trajectories_goals[index]).to(torch.int)  # shape (2,)
         agent_info = torch.from_numpy(self.trajectories_agent_info[index]).to(torch.float32)
         ego_features = torch.from_numpy(self.ego_info[index]).to(torch.float32)
@@ -79,6 +79,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                                                                   , trajectory.info["agent_info"],
                                                                   self.BOS_token, self.EOS_token,
                                                                   self.PAD_token, self.cfg.max_frame)
+                    import pdb; pdb.set_trace()
                     goal_info = parallel_find_bin(np.expand_dims(trajectory.info["goal_info"], 0),
                                                   self.x_boundaries, self.y_boundaries)
                     goal_info = (int(goal_info[0]), int(goal_info[1]))

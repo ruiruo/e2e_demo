@@ -22,6 +22,7 @@ class TrajectoryTrainingModule(pl.LightningModule):
         loss_dict = {}
         pred_label, _, _ = self.gen_model(batch)
         label = batch['labels'][:, 1:-1].reshape(-1).cuda()
+        import pdb; pdb.set_trace()
         train_loss = self.loss_func(pred_label, label)
 
         loss_dict.update({"train_loss": train_loss})

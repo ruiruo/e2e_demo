@@ -234,7 +234,8 @@ class TopologyHistory:
 
         final_agent_info = np.stack(agent_info_list, axis=0)
         final_agent_raw_pos = np.stack(agent_raw_pos_list, axis=0)
-
+        # import pdb
+        # pdb.set_trace()
         self.info["agent_info"] = final_agent_info
         self.agent_raw_pos = final_agent_raw_pos
 
@@ -321,9 +322,8 @@ class AgentFeatureParser:
         mask_id_not_zero = new_agent_info[:, 0] != 0
         new_agent_info = new_agent_info[mask_id_not_zero]
         new_agent_info = new_agent_info[:, 1:]
-
-        new_agent_info = self._simulate_future_states(new_agent_info)
-
+        # sim to t-1
+        new_agent_info = self._simulate_future_states(new_agent_info)[:-1]
         return new_agent_info
 
     # TODO: set step 3

@@ -9,7 +9,19 @@ class TrajectoryDecoder(nn.Module):
     def __init__(self, cfg: Configuration):
         super().__init__()
         self.cfg = cfg
-        self.PAD_token = self.cfg.token_nums + self.cfg.append_token - 1
+        self.pad_token = self.cfg.pad_token
+
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=4 * d_model,
+            dropout=0.1,
+            activation='relu'
+        )
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+
+        # 输出到 vocab 的投影 (若需要离散token)
+        self.output_projection = nn.Linear(d_model, vocab_size)
 
         self.embedding = nn.Embedding(self.cfg.token_nums + self.cfg.append_token, self.cfg.tf_de_dim)
         self.pos_drop = nn.Dropout(self.cfg.tf_de_dropout)
