@@ -17,7 +17,7 @@ learning_rate: 0.0001
 weight_decay: 0.00001
 batch_size: 4
 num_workers: 8
-max_agent: 20
+max_agent: 10
 simple_deduction: True
 # resume_path: ""
 
@@ -26,25 +26,23 @@ tokenizer: "/home/nio/reparke2e/configs/local2token.npy"
 detokenizer: "/home/nio/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 256
+embedding_dim: 768
 
 ##################### Target #####################
-add_noise_to_target: True
-target_noise_threshold: 0.5
 
 ##################### Decoder #####################
 item_number: 4
-tf_de_dim: 256
+tf_de_dim: 768
 tf_de_heads: 4
-tf_de_layers: 4
+tf_de_layers: 8
 tf_de_dropout: 0.05
 
 ##################### Data #####################
 max_frame: 10
-token_nums: 1650
-bos_token: 609
-eos_token: 1650
-pad_token: 1651
+token_nums: 1653
+bos_token: 1650
+eos_token: 1651
+pad_token: 1652
 x_boundaries:
             [-10.0, -9.203125, -8.4609375, -7.7734375, -7.13671875, -6.54296875, -5.9921875, -5.48046875, -5.0,
             -4.5234375, -4.046875, -3.572265625, -3.095703125, -2.619140625, -2.142578125, -1.6669921875, -1.1904296875,

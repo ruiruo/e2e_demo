@@ -79,7 +79,6 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                                                                   , trajectory.info["agent_info"],
                                                                   self.BOS_token, self.EOS_token,
                                                                   self.PAD_token, self.cfg.max_frame)
-                    import pdb; pdb.set_trace()
                     goal_info = parallel_find_bin(np.expand_dims(trajectory.info["goal_info"], 0),
                                                   self.x_boundaries, self.y_boundaries)
                     goal_info = (int(goal_info[0]), int(goal_info[1]))

@@ -7,7 +7,7 @@ class TokenTrajWayPointLoss(nn.Module):
     def __init__(self, cfg: Configuration):
         super(TokenTrajWayPointLoss, self).__init__()
         self.cfg = cfg
-        self.PAD_token = self.cfg.token_nums + 2
+        self.PAD_token = self.cfg.pad_token
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=self.PAD_token)
 
     def forward(self, pred_label, data):

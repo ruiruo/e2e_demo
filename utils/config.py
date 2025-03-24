@@ -36,8 +36,6 @@ class Configuration:
     simple_deduction: bool
 
     # Target Options
-    add_noise_to_target: bool
-    target_noise_threshold: float
 
     # Encoder Options
     embedding_dim: int

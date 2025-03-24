@@ -28,7 +28,7 @@ def create_sample(ego_tokens, agent_info, bos_token, eos_token, pad_token, targe
         agent_info (Any): The background agent information, unchanged.
     """
     # Build the ego trajectory with BOS and EOS tokens.
-    trajectory = np.concatenate([np.array([bos_token]), ego_tokens[1:], np.array([eos_token])])
+    trajectory = np.concatenate([np.array([bos_token]), ego_tokens, np.array([eos_token])])
     # Calculate the number of PAD tokens needed to reach the target sequence length.
     n_pad = max(0, target_seq_len - len(trajectory))
     trajectory = np.concatenate([trajectory, np.array([pad_token] * n_pad)])
