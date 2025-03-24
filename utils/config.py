@@ -20,6 +20,17 @@ class Configuration:
     multi_agent_info: bool
     max_frame: int
     max_agent: int
+    simple_deduction: bool
+    tfrecord_niofs_path: str
+    tfrecord_files_list: str
+    local_data_save_dir: str
+    save_tf_to_local_tmp_path: str
+    save_data_num_per: int
+    case_size: int
+    max_lane_num: int
+    max_node_num_per_lane: int
+    vector_graph_feature_fea_dim: list
+
     # Basic Options
     data_mode: str
     num_gpus: int
@@ -33,7 +44,6 @@ class Configuration:
     weight_decay: float
     batch_size: int
     num_workers: int
-    simple_deduction: bool
 
     # Target Options
 
