@@ -175,6 +175,7 @@ class TopologyHistory:
         self.cfg = cfg
         self.max_frame = cfg.max_frame
         self.max_agent = cfg.max_agent
+        self.simple_deduction = cfg.simple_deduction
         self.frame_id = frame_id
         self.local2token = local2token
         self.info = {}
@@ -196,48 +197,79 @@ class TopologyHistory:
     def _preprocess_agent(self, feature):
         parser = AgentFeatureParser(self.cfg, feature)
         agent_info = parser.preprocess()
-        if agent_info.ndim == 2:
-            agent_info = agent_info[np.newaxis, ...]
 
-        T, A, attr = agent_info.shape
+        if self.simple_deduction:
+            T, A, attr = agent_info.shape
 
-        self.agent_raw_pos = agent_info[:, :, 0:2].copy()
+            self.agent_raw_pos = agent_info[:, :, 0:2].copy()
 
-        agent_raw_pos_flat = self.agent_raw_pos.reshape(-1, 2)
-        tokenized_flat = tokenize_traj_waypoints(agent_raw_pos_flat,
-                                                 np.array(self.cfg.x_boundaries),
-                                                 np.array(self.cfg.y_boundaries),
-                                                 self.local2token)
-        agent_tokenized = tokenized_flat.reshape(T, A)
+            agent_raw_pos_flat = self.agent_raw_pos.reshape(-1, 2)
+            tokenized_flat = tokenize_traj_waypoints(agent_raw_pos_flat,
+                                                     np.array(self.cfg.x_boundaries),
+                                                     np.array(self.cfg.y_boundaries),
+                                                     self.local2token)
+            agent_tokenized = tokenized_flat.reshape(T, A)
 
-        agent_features = agent_info[:, :, 2:]
-        agent_info_final = np.concatenate([agent_tokenized[..., np.newaxis], agent_features], axis=-1)
+            agent_features = agent_info[:, :, 2:]
+            agent_info_final = np.concatenate([agent_tokenized[..., np.newaxis], agent_features], axis=-1)
 
-        agent_info_list = []
-        agent_raw_pos_list = []
-        for t in range(T):
-            valid_mask = agent_info_final[t, :, 0] != -1
-            valid_rows = agent_info_final[t, valid_mask, :]
-            valid_raw_pos = self.agent_raw_pos[t, valid_mask, :]
+            # For each agent (second dimension), check if there is at least one token not equal to -1 across all time steps.
+            global_valid = np.any(agent_info_final[:, :, 0] != -1, axis=0)
+            global_valid_indices = np.where(global_valid)[0]
+
+            # Select globally valid agents and limit the number to self.max_agent.
+            if len(global_valid_indices) >= self.max_agent:
+                selected_indices = global_valid_indices[:self.max_agent]
+            else:
+                selected_indices = global_valid_indices
+
+            # --- Extract data for each time step following the global order ---
+            # Even if an agent's token is -1 at a specific time step, its corresponding row is retained.
+            agent_info_selected = agent_info_final[:, selected_indices, :]
+            agent_raw_pos_selected = self.agent_raw_pos[:, selected_indices, :]
+
+            # If the number of selected agents is less than self.max_agent, perform padding.
+            n_selected = agent_info_selected.shape[1]
+            if n_selected < self.max_agent:
+                pad_size = self.max_agent - n_selected
+                pad_agent = np.full((T, pad_size, agent_info_selected.shape[-1]), -1, dtype=agent_info_selected.dtype)
+                pad_raw_pos = np.full((T, pad_size, 2), -1, dtype=agent_raw_pos_selected.dtype)
+                final_agent_info = np.concatenate([agent_info_selected, pad_agent], axis=1)
+                final_agent_raw_pos = np.concatenate([agent_raw_pos_selected, pad_raw_pos], axis=1)
+            else:
+                final_agent_info = agent_info_selected
+                final_agent_raw_pos = agent_raw_pos_selected
+
+            invalid_token_mask = final_agent_info[:, :, 0] == -1
+            final_agent_info[invalid_token_mask] = -1
+            final_agent_raw_pos[invalid_token_mask] = -1
+
+            self.info["agent_info"] = final_agent_info
+            self.agent_raw_pos = final_agent_raw_pos
+        else:
+            self.agent_raw_pos = agent_info[:, 0:2]
+            agent_info = agent_info[:, 2:]
+            agent_tokenized = tokenize_traj_waypoints(self.agent_raw_pos,
+                                                      np.array(self.cfg.x_boundaries),
+                                                      np.array(self.cfg.y_boundaries),
+                                                      self.local2token)
+            agent_info = np.concatenate([np.expand_dims(agent_tokenized, 1), agent_info], axis=1)
+            valid_rows = agent_info[agent_info[:, 0] != -1]
             n_valid = valid_rows.shape[0]
+            n_features = agent_info.shape[1]
+
+            # Update self.agent_raw_pos to only include valid rows.
+            valid_mask = agent_info[:, 0] != -1
+            valid_rows = agent_info[valid_mask]
+            self.agent_raw_pos = self.agent_raw_pos[valid_mask]
+
             if n_valid >= self.max_agent:
                 agent_organized = valid_rows[:self.max_agent, :]
-                raw_pos_organized = valid_raw_pos[:self.max_agent, :]
             else:
-                pad_agent = np.full((self.max_agent - n_valid, agent_info_final.shape[-1]), -1,
-                                    dtype=agent_info_final.dtype)
-                pad_raw_pos = np.full((self.max_agent - n_valid, 2), -1, dtype=self.agent_raw_pos.dtype)
-                agent_organized = np.vstack([valid_rows, pad_agent])
-                raw_pos_organized = np.vstack([valid_raw_pos, pad_raw_pos])
-            agent_info_list.append(agent_organized)
-            agent_raw_pos_list.append(raw_pos_organized)
+                pad = np.full((self.max_agent - n_valid, n_features), -1, dtype=agent_info.dtype)
+                agent_organized = np.vstack((valid_rows, pad))
 
-        final_agent_info = np.stack(agent_info_list, axis=0)
-        final_agent_raw_pos = np.stack(agent_raw_pos_list, axis=0)
-        # import pdb
-        # pdb.set_trace()
-        self.info["agent_info"] = final_agent_info
-        self.agent_raw_pos = final_agent_raw_pos
+            self.info["agent_info"] = agent_organized
 
     def _preprocess_ego(self, ego_history):
         """
@@ -287,6 +319,8 @@ class AgentFeatureParser:
         self.pos_bias = feature['ego_history_feature'][0, 2:5]
         self.agent = feature['agent_feature']
         self.agent_attribute = feature['agent_attribute_feature']
+        self.simple_deduction = cfg.simple_deduction
+        self.max_frame = cfg.max_frame
 
     def preprocess(self) -> np.ndarray:
         """
@@ -296,39 +330,73 @@ class AgentFeatureParser:
             (s_id, id, x, y, heading, v, acc, timestamp)
         """
         # 1. Extract necessary columns and align with ego position bias.
-        agent_info = self.agent[:, 1:7].copy()
-        agent_attr = self.agent_attribute[:, :3]
-        mask = ~np.any(agent_info[:, 1:3] == -300, axis=1)
-        agent_info[mask, 1:3] -= self.pos_bias[:2]
-        cos_theta = np.cos(self.pos_bias[2])
-        sin_theta = np.sin(self.pos_bias[2])
-        rotated_xy = agent_info[:, 1:3]
-        rotated_xy[:, 0] = agent_info[:, 1] * cos_theta + agent_info[:, 2] * sin_theta
-        rotated_xy[:, 1] = -agent_info[:, 1] * sin_theta + agent_info[:, 2] * cos_theta
-        agent_info[:, 1:3] = rotated_xy
-        agent_info[:, 3] -= self.pos_bias[2]
-        agent_info[:, 3] = (agent_info[:, 3] + np.pi) % (2 * np.pi) - np.pi
+        new_agent_info, agent_attr = self.process_agent_info()
+
+        if self.simple_deduction:
+            new_agent_info = self._simulate_future_states(new_agent_info, self.max_frame)
 
         # 2. Concatenate agent attributes to agent_info.
-        new_agent_info = self._concatenate_agent_attributes(agent_info, agent_attr)
+        new_agent_info = self._concatenate_agent_attributes(new_agent_info, agent_attr, self.simple_deduction)
 
-        # 3. Append absolute distance from ego to each agent.
-        new_agent_info = self._append_absolute_distance(new_agent_info)
+        if not self.simple_deduction:
+            # 3. Append absolute distance from ego to each agent.
+            new_agent_info = self._append_absolute_distance(new_agent_info)
 
-        # 4. Append minimum polygon (bounding box) distance between ego and each agent.
-        new_agent_info = self._append_min_polygon_distance(new_agent_info)
+            # 4. Append minimum polygon (bounding box) distance between ego and each agent.
+            new_agent_info = self._append_min_polygon_distance(new_agent_info)
 
-        # 5. Remove agents with id == 0 and id col
-        mask_id_not_zero = new_agent_info[:, 0] != 0
-        new_agent_info = new_agent_info[mask_id_not_zero]
-        new_agent_info = new_agent_info[:, 1:]
-        # sim to t-1
-        new_agent_info = self._simulate_future_states(new_agent_info)[:-1]
-        return new_agent_info
+        # 5. Remove agents id col
+        if self.simple_deduction:
+            new_agent_info = new_agent_info[:, :, 1:]
+            # Transpose dimensions from (agent, time, feature) to (time, agent, feature)
+            return np.transpose(new_agent_info, (1, 0, 2))
+        else:
+            new_agent_info = new_agent_info[:, 1:]
+            return new_agent_info
 
-    # TODO: set step 3
+    def process_agent_info(self):
+        """
+        Extract necessary columns from agent data and align them with the ego position bias.
+
+        Returns:
+            tuple: A tuple (agent_info, agent_attr) where:
+                - agent_info (np.ndarray): Processed agent information after coordinate adjustments.
+                - agent_attr (np.ndarray): Extracted agent attributes (first 3 columns).
+        """
+        # 1. Extract necessary columns and align with ego position bias.
+        agent_info = self.agent[:, 1:7].copy()
+        agent_attr = self.agent_attribute[:, :3]
+
+        # Identify valid rows where none of the x,y positions equals -300
+        mask = ~np.any(agent_info[:, 1:3] == -300, axis=1)
+
+        # Subtract the positional bias from valid rows (only for x and y)
+        agent_info[mask, 1:3] -= self.pos_bias[:2]
+
+        # Calculate cosine and sine of the rotation angle
+        cos_theta = np.cos(self.pos_bias[2])
+        sin_theta = np.sin(self.pos_bias[2])
+
+        # Rotate the x,y coordinates to align with the ego coordinate system
+        rotated_xy = agent_info[:, 1:3].copy()
+        rotated_xy[:, 0] = agent_info[:, 1] * cos_theta + agent_info[:, 2] * sin_theta
+        rotated_xy[:, 1] = -agent_info[:, 1] * sin_theta + agent_info[:, 2] * cos_theta
+        agent_info[mask, 1:3] = rotated_xy[mask]
+
+        # Adjust the heading angle by subtracting the positional bias angle and normalize it to [-π, π]
+        agent_info[mask, 3] -= self.pos_bias[2]
+        agent_info[mask, 3] = (agent_info[mask, 3] + np.pi) % (2 * np.pi) - np.pi
+
+        # Filter out ego's subarray
+        mask_id_not_zero = agent_info[:, 0] != 0
+        agent_info = agent_info[mask_id_not_zero]
+
+        # TODO: Sort agent_info to prevent valid agents from being truncated
+
+        return agent_info, agent_attr
+
     @staticmethod
-    def _simulate_future_states(agent_info: np.ndarray, dt: float = 0.2, steps: int = 10) -> np.ndarray:
+    def _simulate_future_states(agent_info: np.ndarray, steps: int = 10, dt: float = 0.2) -> np.ndarray:
         """
         Simulate future states of agents based on their state at t0.
         State format: [x, y, heading, v, acc, length, width, abs_dis, hit_dis]
@@ -345,11 +413,10 @@ class AgentFeatureParser:
                         If any agent's state (subarray) contains -300, that agent's state is copied without simulation.
         """
         n_agents, n_attr = agent_info.shape
-        total_steps = steps + 1
-        states = np.full((total_steps, n_agents, n_attr), -300, dtype=agent_info.dtype)
+        states = np.full((n_agents, steps, n_attr), -300, dtype=agent_info.dtype)
 
         # Set the initial state at t0.
-        states[0] = agent_info.copy()
+        states[:, 0, :] = agent_info.copy()
 
         # Create a boolean mask: True if the agent (row) does NOT contain -300.
         valid_mask = ~(agent_info == -300).any(axis=1)
@@ -359,16 +426,16 @@ class AgentFeatureParser:
         if valid_mask.any():
             valid_indices = np.where(valid_mask)[0]
             # Extract parameters for valid agents.
-            x0 = agent_info[valid_indices, 0]
-            y0 = agent_info[valid_indices, 1]
-            heading = agent_info[valid_indices, 2]
-            v = agent_info[valid_indices, 3]
-            acc = agent_info[valid_indices, 4]
+            x0 = agent_info[valid_indices, 1]
+            y0 = agent_info[valid_indices, 2]
+            heading = agent_info[valid_indices, 3]
+            v = agent_info[valid_indices, 4]
+            acc = agent_info[valid_indices, 5]
             cos_heading = np.cos(heading)
             sin_heading = np.sin(heading)
 
             # For each future time step, compute new x and y for valid agents.
-            for i in range(1, total_steps):
+            for i in range(1, steps):
                 t = i * dt
                 disp = v * t + 0.5 * acc * t ** 2
                 dx = disp * cos_heading
@@ -376,37 +443,51 @@ class AgentFeatureParser:
 
                 # Copy the original state and update the x and y coordinates.
                 new_state = agent_info[valid_indices].copy()
-                new_state[:, 0] = x0 + dx
-                new_state[:, 1] = y0 + dy
+                new_state[:, 1] = x0 + dx
+                new_state[:, 2] = y0 + dy
 
-                states[i, valid_indices, :] = new_state
+                states[valid_indices, i, :] = new_state
 
         # Process invalid agents: replicate their original state for all future timesteps.
         if invalid_mask.any():
             invalid_indices = np.where(invalid_mask)[0]
-            for i in range(1, total_steps):
-                states[i, invalid_indices, :] = agent_info[invalid_indices]
+            for i in range(1, steps):
+                states[invalid_indices, i, :] = agent_info[invalid_indices]
 
         return states
 
     @staticmethod
-    def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray) -> np.ndarray:
+    def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray, simple_deduction: bool) -> np.ndarray:
         """
         Concatenate extra attributes from agent_attr to agent_info.
 
         Build a dictionary mapping agent id to its attribute data, then iterate over agent_info to append the corresponding attributes.
         """
         id_to_data = {row[0]: row[1:] for row in agent_attr}
-        new_last_dim = agent_info.shape[1] + agent_attr.shape[1] - 1
-        new_agent_info = np.full((agent_info.shape[0], new_last_dim), -300., dtype=float)
-        for i in range(agent_info.shape[0]):
-            current_id = agent_info[i, 0]
-            if current_id == -300:
-                continue
-            if current_id not in id_to_data:
-                raise ValueError(f"Agent attribute not found for id: {current_id}")
-            extra_data = id_to_data[current_id]
-            new_agent_info[i] = np.concatenate([agent_info[i], extra_data])
+
+        if simple_deduction:
+            new_last_dim = agent_info.shape[2] + agent_attr.shape[1] - 1
+            new_agent_info = np.full((agent_info.shape[0], agent_info.shape[1], new_last_dim), -300., dtype=float)
+            for i in range(agent_info.shape[0]):
+                for j in range(agent_info.shape[1]):
+                    current_id = agent_info[i, j, 0]
+                    if current_id == -300:
+                        continue
+                    if current_id not in id_to_data:
+                        raise ValueError(f"Agent attribute not found for id: {current_id}")
+                    extra_data = id_to_data[current_id]
+                    new_agent_info[i, j] = np.concatenate([agent_info[i, j], extra_data])
+        else:
+            new_last_dim = agent_info.shape[1] + agent_attr.shape[1] - 1
+            new_agent_info = np.full((agent_info.shape[0], new_last_dim), -300., dtype=float)
+            for i in range(agent_info.shape[0]):
+                current_id = agent_info[i, 0]
+                if current_id == -300:
+                    continue
+                if current_id not in id_to_data:
+                    raise ValueError(f"Agent attribute not found for id: {current_id}")
+                extra_data = id_to_data[current_id]
+                new_agent_info[i] = np.concatenate([agent_info[i], extra_data])
         return new_agent_info
 
     @staticmethod
@@ -582,8 +663,6 @@ class TrajectoryInfoParser:
                 for start_idx in range(slice_length - self.max_frame):
                     end_idx = start_idx + self.max_frame + 1
                     ego_window = ego_history[start_idx:end_idx]
-                    # skip v > 18m/s traj
-                    if any(ego_window[:, 5] > 18): continue
                     agent_window = agent_feature[:, start_idx, :]
                     topology_history = TopologyHistory(
                         cfg=self.cfg,
@@ -697,15 +776,28 @@ class TrajectoryInfoParser:
 
         return data
 
-    def _calc_error_with_token(self, raw_data: np.ndarray, ego_token: np.ndarray):
-        if raw_data[-1, 0] < 12:
-            ego_traj_with_token = detokenize_traj_waypoints(ego_token, self.detokenizer)
-            token_error = TrajectoryDistance(ego_traj_with_token, raw_data)
-            self.error_x_under_12.append(token_error.get_l2_distance())
-        else:
-            ego_traj_with_token = detokenize_traj_waypoints(ego_token, self.detokenizer)
-            token_error = TrajectoryDistance(ego_traj_with_token, raw_data)
-            self.error_x_over_12.append(token_error.get_l2_distance())
+    def _calc_error_with_token(self, raw_data: np.ndarray, token: np.ndarray):
+        # if is_ego_traj:
+            if raw_data[-1, 0] < 12:
+                traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
+                token_error = TrajectoryDistance(traj_with_token, raw_data)
+                self.error_x_under_12.append(token_error.get_l2_distance())
+            else:
+                traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
+                token_error = TrajectoryDistance(traj_with_token, raw_data)
+                self.error_x_over_12.append(token_error.get_l2_distance())
+        # else:
+        #     for i in range(len(token)):
+        #         for j in range(len(token[0])):
+        #             if token[i, j] != -1:
+        #                 if raw_data[i, j, 0] < 12:
+        #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
+        #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
+        #                     self.error_x_under_12.append(token_error.get_l2_distance())
+        #                 else:
+        #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
+        #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
+        #                     self.error_x_over_12.append(token_error.get_l2_distance())
 
 # TODO: eval it
 class TrajectoryDistance:

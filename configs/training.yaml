@@ -18,6 +18,7 @@ weight_decay: 0.00001
 batch_size: 4
 num_workers: 8
 max_agent: 20
+simple_deduction: True
 # resume_path: ""
 
 ##################### Data Process #####################

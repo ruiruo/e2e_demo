@@ -33,6 +33,7 @@ class Configuration:
     weight_decay: float
     batch_size: int
     num_workers: int
+    simple_deduction: bool
 
     # Target Options
     add_noise_to_target: bool
