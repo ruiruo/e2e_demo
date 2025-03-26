@@ -6,30 +6,26 @@ from utils.trajectory_utils import TrajectoryDistance, detokenize_traj_waypoints
 
 
 class TrajectoryGeneratorMetric:
-    def __init__(self, cfg: Configuration, pred_traj_waypoints, batch) -> None:
+    def __init__(self, cfg: Configuration) -> None:
         self.cfg = cfg
-        self.BOS_token = self.cfg.token_nums
-        self.distance_dict = self.calculate_distance(pred_traj_waypoints, batch)
         with open(self.cfg.detokenizer, "r") as f:
             self.detokenizer = json.load(f)
 
     def calculate_distance(self, pred_traj_waypoints, batch):
         distance_dict = {}
-        prediction_waypoints = self.get_predict_waypoints(pred_traj_waypoints)
-        gt_waypoints = self.get_gt_waypoints(batch['labels'])
-
-        prediction_waypoints = prediction_waypoints.reshape(self.cfg.batch_size, -1, self.cfg.item_number)
-        gt_waypoints = gt_waypoints.reshape(self.cfg.batch_size, -1, self.cfg.item_number)
-        valid_mask = ((gt_waypoints < self.cfg.eos_token) & (prediction_waypoints < self.cfg.eos_token)).all(dim=-1)
-        prediction_waypoints_np = []
+        bz, length = batch["labels"].shape
+        if self.cfg.ignore_bos_loss:
+            length -= 1
+        prediction_waypoints = self.get_hp_predict_waypoints(pred_traj_waypoints, bz, length)
+        gt_waypoints = self.get_hp_waypoints(batch['labels'])
+        gt_prediction_waypoints_np = []
         gt_waypoints_np = []
         for index in range(self.cfg.batch_size):
-            prediction_waypoints_np.append(self.get_valid_np_waypoints(prediction_waypoints[index], valid_mask[index]))
-            gt_waypoints_np.append(self.get_valid_np_waypoints(gt_waypoints[index], valid_mask[index]))
-
+            gt_prediction_waypoints_np.append(self.get_valid_np_waypoints(prediction_waypoints[index]))
+            gt_waypoints_np.append(self.get_valid_np_waypoints(gt_waypoints[index]))
         l2_list, haus_list, fourier_difference = [], [], []
         for index in range(self.cfg.batch_size):
-            distance_obj = TrajectoryDistance(prediction_waypoints_np[index], gt_waypoints_np[index])
+            distance_obj = TrajectoryDistance(gt_prediction_waypoints_np[index], gt_waypoints_np[index])
             if distance_obj.get_len() < 1:
                 continue
             l2_list.append(distance_obj.get_l2_distance())
@@ -44,16 +40,13 @@ class TrajectoryGeneratorMetric:
             distance_dict.update({"fourier_difference": np.mean(fourier_difference)})
         return distance_dict
 
-    def get_valid_np_waypoints(self, torch_waypoints, valid_mask):
-        torch_waypoints_valid = torch_waypoints[valid_mask]
-        np_waypoints_valid_detoken = detokenize_traj_waypoints(torch_waypoints_valid, self.detokenizer)
+    def get_valid_np_waypoints(self, torch_waypoints):
+        np_waypoints_valid_detoken = detokenize_traj_waypoints(torch_waypoints, self.detokenizer)
         return np_waypoints_valid_detoken
 
-    def get_predict_waypoints(self, pred_traj_waypoint):
-        prediction = torch.softmax(pred_traj_waypoint, dim=-1)
-        prediction = prediction[:, :-2, :]
-        prediction = prediction.argmax(dim=-1).view(-1, self.cfg.item_number)
-        return prediction
+    def get_hp_predict_waypoints(self, pred_traj_waypoint, bz, length):
+        waypoints = torch.argmax(pred_traj_waypoint, dim=-1).reshape([bz, length])
+        return self.get_hp_waypoints(waypoints)
 
-    def get_gt_waypoints(self, batch_gt_waypoints):
-        return batch_gt_waypoints[:, 1:-2].reshape(-1).view(-1, self.cfg.item_number)
+    def get_hp_waypoints(self, batch_waypoints):
+        return batch_waypoints[:, 1:1 + self.cfg.item_number]

@@ -79,11 +79,11 @@ class BackgroundEncoder(nn.Module):
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=pos_embed_dim,
-            nhead=2,
+            nhead=4,
             dim_feedforward=pos_embed_dim,
             dropout=0.1,
             activation="relu",
-            norm_first=True
+            norm_first=True,
         )
 
         self.topology_encoder = nn.TransformerEncoder(

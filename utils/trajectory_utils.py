@@ -121,13 +121,11 @@ def detokenize_traj_waypoints(token_ids, token2local):
         token_ids = token_ids.tolist()
 
     result = []
-    token2local_dict = token2local.__dict__
     for token in token_ids:
         key = str(int(token))
-        coords = token2local_dict.get(key, (float('nan'), float('nan')))
+        coords = token2local.get(key, (float('nan'), float('nan')))
         result.append(coords)
     return np.array(result)
-
 
 
 def plot_trajectory_with_time(ego_info: np.ndarray):
@@ -457,7 +455,8 @@ class AgentFeatureParser:
         return states
 
     @staticmethod
-    def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray, simple_deduction: bool) -> np.ndarray:
+    def _concatenate_agent_attributes(agent_info: np.ndarray, agent_attr: np.ndarray,
+                                      simple_deduction: bool) -> np.ndarray:
         """
         Concatenate extra attributes from agent_attr to agent_info.
 
@@ -778,26 +777,27 @@ class TrajectoryInfoParser:
 
     def _calc_error_with_token(self, raw_data: np.ndarray, token: np.ndarray):
         # if is_ego_traj:
-            if raw_data[-1, 0] < 12:
-                traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
-                token_error = TrajectoryDistance(traj_with_token, raw_data)
-                self.error_x_under_12.append(token_error.get_l2_distance())
-            else:
-                traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
-                token_error = TrajectoryDistance(traj_with_token, raw_data)
-                self.error_x_over_12.append(token_error.get_l2_distance())
-        # else:
-        #     for i in range(len(token)):
-        #         for j in range(len(token[0])):
-        #             if token[i, j] != -1:
-        #                 if raw_data[i, j, 0] < 12:
-        #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
-        #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
-        #                     self.error_x_under_12.append(token_error.get_l2_distance())
-        #                 else:
-        #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
-        #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
-        #                     self.error_x_over_12.append(token_error.get_l2_distance())
+        if raw_data[-1, 0] < 12:
+            traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
+            token_error = TrajectoryDistance(traj_with_token, raw_data)
+            self.error_x_under_12.append(token_error.get_l2_distance())
+        else:
+            traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
+            token_error = TrajectoryDistance(traj_with_token, raw_data)
+            self.error_x_over_12.append(token_error.get_l2_distance())
+    # else:
+    #     for i in range(len(token)):
+    #         for j in range(len(token[0])):
+    #             if token[i, j] != -1:
+    #                 if raw_data[i, j, 0] < 12:
+    #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
+    #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
+    #                     self.error_x_under_12.append(token_error.get_l2_distance())
+    #                 else:
+    #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
+    #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
+    #                     self.error_x_over_12.append(token_error.get_l2_distance())
+
 
 # TODO: eval it
 class TrajectoryDistance:

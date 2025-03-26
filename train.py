@@ -33,5 +33,5 @@ trainer = Trainer(
     profiler='simple'
 )
 
-seed_everything(20)
+seed_everything(175)
 trainer.fit(model=model, datamodule=data, ckpt_path=config_obj.resume_path)

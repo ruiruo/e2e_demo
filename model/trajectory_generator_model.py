@@ -170,7 +170,7 @@ class TrajectoryGenerator(nn.Module):
         env_state = env_state.permute(1, 0, 2, 3)
         mem = [self.get_env_window_around_t(env_state, i) for i in range(t)]
         mem = torch.concatenate([torch.unsqueeze(i, 0) for i in mem], dim=0)
-        # mem = [t, agent * 3, bz, dim] example: torch.Size([10, 63, 4, 256])
+        # mem = [t, agent * 3, bz, dim] example: torch.Size([10, 11*3, 4, 256])
         mem = mem.reshape(t * num_agents * 3, bz, dim_agents)
         tgt = self_state.transpose(0, 1)
         # tgt = [t, bz, dim]
