@@ -184,7 +184,7 @@ class TopologyHistory:
     def _preprocess(self, feature):
         self._preprocess_ego(feature.get('ego_history_feature'))
         self._preprocess_agent(feature)
-        self.info["goal_info"] = self.info["ego_info"][-1][0:2]
+        self.info["goal_info"] = self.ego_raw_pos[-1]
         self._cut()
 
     def _cut(self):
@@ -710,12 +710,11 @@ class TrajectoryInfoParser:
                 slice_start = None
 
         if slice_start is None:
-            print("Task{self.task_index} no segment found with consecutive timestamp intervals greater than 0.2s")
+            # print("Task{self.task_index} no segment found with consecutive timestamp intervals greater than 0.2s")
             return {}
         slice_length = slice_start - slice_end
         if slice_length < self.max_frame:
-            print(
-                f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
+            # print(f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
             return {}
 
         ego_history = ego_history[slice_end: slice_start][::-1]

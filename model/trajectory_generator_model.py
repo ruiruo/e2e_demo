@@ -146,10 +146,7 @@ class TrajectoryGenerator(nn.Module):
         dec_out = self.trajectory_gen(
             tgt=tgt_emb,
             memory=memory,  # shape => (some_mem_len, B, D)
-            tgt_mask=tgt_mask,
-            memory_mask=memory_mask,
-            tgt_key_padding_mask=tgt_key_padding_mask,
-            memory_key_padding_mask=memory_key_padding_mask
+            tgt_mask=tgt_mask
         )
         # => (tgt_seq_len, batch_size, embed)
         # Project to vocabulary space
@@ -176,11 +173,15 @@ class TrajectoryGenerator(nn.Module):
         # tgt = [t, bz, dim]
         causal_mask = self.create_mask(length)
         # cross attention
-        pred_logits = self.decoder(
-            tgt_emb=tgt,
-            memory=mem,
-            tgt_mask=causal_mask
-        )
+        try:
+            pred_logits = self.decoder(
+                tgt_emb=tgt,
+                memory=mem,
+                tgt_mask=causal_mask
+            )
+        except:
+            import pdb
+            pdb.set_trace()
         # (bz, length, vocab)
         pred_logits = pred_logits.transpose(0, 1)
         return pred_logits, self_state, env_state

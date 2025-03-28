@@ -5,8 +5,9 @@ from utils.common import setup_callbacks
 from dataset.dataloader import TrajectoryDataloaderModule
 from model.trajectory_generator_train import TrajectoryTrainingModule
 import os
+import pickle
 
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 cfg_path = "./configs/training.yaml"
 seed_everything(16)
@@ -16,17 +17,15 @@ model = TrajectoryTrainingModule(config_obj)
 print(model.gen_model)
 
 data = TrajectoryDataloaderModule(cfg=config_obj)
-data.setup("train")
-train_loader = data.train_loader
-
-print(len(train_loader))
+# data.setup("train")
+# print(len(data.train_loader), len(data.val_loader))
 
 trainer = Trainer(
     callbacks=setup_callbacks(config_obj),
     logger=TensorBoardLogger(save_dir=config_obj.log_dir, default_hp_metric=False),
-    accelerator='gpu',
-    strategy='ddp_find_unused_parameters_true',
-    devices=config_obj.num_gpus,
+    accelerator="gpu",
+    # strategy='ddp_find_unused_parameters_true',
+    devices='auto',
     max_epochs=config_obj.epochs,
     log_every_n_steps=config_obj.log_every_n_steps,
     check_val_every_n_epoch=config_obj.check_val_every_n_epoch,

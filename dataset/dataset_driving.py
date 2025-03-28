@@ -98,13 +98,59 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         train_data_dir = os.path.join(self.root_dir, self.cfg.training_dir)
         val_data_dir = os.path.join(self.root_dir, self.cfg.validation_dir)
         data_dir = train_data_dir if self.is_train == 1 else val_data_dir
+        allow = self.cfg.max_train if self.is_train == 1 else self.cfg.max_val
         for scene_item in os.listdir(data_dir):
-            scene_path = os.path.join(data_dir, scene_item)
-            task_path = os.path.join(scene_path, scene_path)
+            task_path = os.path.join(data_dir, scene_item)
             all_tasks.append(task_path)
+            if len(all_tasks) >= allow:
+                break
         return all_tasks
 
     def format_transform(self):
-        self.trajectories = np.array(self.trajectories).astype(np.float32)
-        self.trajectories_gt = np.array(self.trajectories_gt).astype(np.float32)
-        self.trajectories_goals = np.array(self.trajectories_goals).astype(np.float32)
+        """
+        Convert lists to numpy arrays and call after_process to remove duplicates.
+        """
+        self.trajectories = np.array(self.trajectories, dtype=np.float32)
+        self.trajectories_gt = np.array(self.trajectories_gt, dtype=np.float32)
+        self.trajectories_goals = np.array(self.trajectories_goals, dtype=np.float32)
+        self.trajectories_agent_info = np.array(self.trajectories_agent_info, dtype=np.float32)
+        self.ego_info = np.array(self.ego_info, dtype=np.float32)
+
+        # Remove duplicated entries
+        self.after_process()
+
+    def after_process(self):
+        """
+        Remove duplicate samples (trajectories, trajectories_gt, trajectories_goals).
+        Make sure we keep all relevant arrays in sync by reindexing.
+        """
+        seen = {}
+        unique_indices = []
+        for i, (traj, traj_gt, traj_goal) in enumerate(
+                zip(self.trajectories, self.trajectories_gt, self.trajectories_goals)
+        ):
+            # Build a hashable key from three arrays
+            key = (traj.tobytes(), traj_gt.tobytes())
+            if key not in seen:
+                seen[key] = i
+                unique_indices.append(i)
+
+        # Re-slice to keep only unique items across all arrays
+        self.trajectories = self.trajectories[unique_indices]
+        self.trajectories_gt = self.trajectories_gt[unique_indices]
+        self.trajectories_goals = self.trajectories_goals[unique_indices]
+        self.trajectories_agent_info = self.trajectories_agent_info[unique_indices]
+        self.ego_info = self.ego_info[unique_indices]
+        # If you rely on self.task_index_list, you may also need to re-map or remove
+        # references to removed items accordingly. For many use cases, you can skip it
+        # or recalculate it if needed.
+
+
+# import yaml
+#
+# cfg_path = "/home/shaoqian.li/reparke2e/configs/training.yaml"
+#
+# with open(cfg_path, 'rb') as f:
+#     config_obj = yaml.safe_load(f)
+# con_obj = Configuration(**config_obj)
+# TrajectoryDataModule(con_obj, True)

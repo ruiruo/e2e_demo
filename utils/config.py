@@ -30,6 +30,8 @@ class Configuration:
     max_lane_num: int
     max_node_num_per_lane: int
     vector_graph_feature_fea_dim: list
+    max_train:int
+    max_val: int
 
     # Basic Options
     data_mode: str
@@ -57,13 +59,13 @@ class Configuration:
     tf_de_dropout: float
 
     # Tokenizer
-    x_boundaries: List | np.ndarray
-    y_boundaries: List | np.ndarray
+    x_boundaries: np.ndarray
+    y_boundaries: np.ndarray
     bos_token: int
     eos_token: int
     pad_token: int
     # Optional extras
-    device: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device: torch.device = torch.device('cpu')
     resume_path: str = None
     config_path: str = None
     log_dir: str = None

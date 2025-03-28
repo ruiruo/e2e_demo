@@ -21,12 +21,12 @@ class TrajectoryTrainingModule(pl.LightningModule):
     def batch_one_step(self, batch):
         pred_label, _, _ = self.gen_model(batch)
         if self.cfg.ignore_bos_loss:
-            label = batch['labels'][:, 1:].reshape(-1).cuda()
+            label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
             pred_label = pred_label[:, 1:]
             bz, t, vocab = pred_label.shape
             pred_label = pred_label.reshape([bz * t, vocab])
         else:
-            label = batch['labels'].reshape(-1).cuda()
+            label = batch['labels'].reshape(-1).to(self.cfg.device)
             bz, t, vocab = pred_label.shape
             pred_label = pred_label.reshape([bz * t, vocab])
         return pred_label, label
@@ -41,6 +41,7 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         val_loss_dict = {}
+
         pred_label, label = self.batch_one_step(batch)
 
         val_loss = self.loss_func(pred_label, label)
