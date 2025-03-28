@@ -18,6 +18,21 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
         self.gen_model = TrajectoryGenerator(self.cfg)
 
+        # Initialize model weights
+        self.init_model_weights()
+
+    def init_model_weights(self):
+        """
+        Initialize weights for the generator model.
+        """
+
+        def init_func(m):
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias, 0)
+        self.gen_model.apply(init_func)
+
     def batch_one_step(self, batch):
         pred_label, _, _ = self.gen_model(batch)
         if self.cfg.ignore_bos_loss:
@@ -36,7 +51,7 @@ class TrajectoryTrainingModule(pl.LightningModule):
         pred_label, label = self.batch_one_step(batch)
         train_loss = self.loss_func(pred_label, label)
         loss_dict.update({"train_loss": train_loss})
-        self.log_dict(loss_dict)
+        self.log_dict(loss_dict, on_epoch=True, prog_bar=True, logger=True)
         return train_loss
 
     def validation_step(self, batch, batch_idx):
@@ -49,9 +64,11 @@ class TrajectoryTrainingModule(pl.LightningModule):
         val_loss_dict.update({"val_loss": val_loss})
 
         customized_metric = TrajectoryGeneratorMetric(self.cfg)
-        val_loss_dict.update(customized_metric.calculate_distance(pred_label, batch))
+        dis = customized_metric.calculate_distance(pred_label, batch)
+        val_loss_dict.update(dis)
 
-        self.log_dict(val_loss_dict)
+        print(val_loss_dict)
+        self.log_dict(val_loss_dict, on_epoch=True, prog_bar=True, logger=True)
 
         return val_loss
 

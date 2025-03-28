@@ -6,8 +6,8 @@ validation_dir: "val"
 is_train: True
 multi_agent_info: False
 simple_deduction: True
-max_train : 50000000
-max_val: 1000000
+max_train : 500
+max_val: 100
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
@@ -39,10 +39,10 @@ log_root_dir: '/home/shaoqian.li/log/'
 checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
 log_every_n_steps: 100
 check_val_every_n_epoch: 5
-epochs: 200
+epochs: 50
 learning_rate: 0.0001
 weight_decay: 0.00001
-batch_size: 1024
+batch_size: 512
 num_workers: 8
 max_agent: 8
 ignore_bos_loss: True

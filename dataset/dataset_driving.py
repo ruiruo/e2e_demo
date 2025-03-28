@@ -68,9 +68,11 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         for task_index, task_path in tqdm.tqdm(enumerate(all_tasks)):
             # task iteration
             # todo, could be mutil process
-            traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg)
+            try:
+                traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg)
+            except:
+                continue
             for traje_id, trajectory in enumerate(traje_info_obj.trajectories):
-
                 if self.cfg.multi_agent_info:
                     # TODO: generate (n-1) * trajectories by multi agent info
                     raise NotImplementedError
@@ -148,11 +150,11 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         # --------------------------------------------------------------------------
         seen = {}
         unique_indices = []
-        for i, (traj, traj_gt, traj_goal) in enumerate(
+        for i, (traj, traj_gt) in enumerate(
                 zip(self.trajectories, self.trajectories_gt)
         ):
             # Build a hashable key from arrays (or just from traj & traj_gt if you prefer)
-            key = (traj.tobytes(), traj_gt.tobytes(), traj_goal.tobytes())
+            key = (traj.tobytes(), traj_gt.tobytes())
             if key not in seen:
                 seen[key] = i
                 unique_indices.append(i)

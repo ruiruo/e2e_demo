@@ -809,7 +809,6 @@ class TrajectoryDistance:
 
     def cut_stop_segment(self, stop_threshold=0.001):
         distance_list = np.linalg.norm(self.gt_points_np[1:, :] - self.gt_points_np[:-1, :], axis=-1)
-
         threshold_bool_list = abs(distance_list) < stop_threshold
 
         stop_index = -1
@@ -818,8 +817,9 @@ class TrajectoryDistance:
             if not threshold_bool_list[inverse_index]:
                 stop_index = inverse_index + 1
                 break
-        self.prediction_points_np = self.prediction_points_np[:stop_index + 1]
-        self.gt_points_np = self.gt_points_np[:stop_index + 1]
+
+        self.prediction_points_np = self.prediction_points_np[:0]  # Empty array
+        self.gt_points_np = self.gt_points_np[:0]  # Empty array
 
     def get_len(self):
         return self.gt_points_np.shape[0]
@@ -845,7 +845,8 @@ class TrajectoryDistance:
         complex_points = np.empty(points.shape[0], dtype=complex)
         complex_points.real = points[:, 0]
         complex_points.imag = points[:, 1]
+
         descriptors = np.fft.fft(complex_points)
         descriptors = np.abs(descriptors[:num_descriptors])
-
         return descriptors
+

@@ -27,17 +27,18 @@ class TrajectoryGeneratorMetric:
         for index in range(self.cfg.batch_size):
             distance_obj = TrajectoryDistance(gt_prediction_waypoints_np[index], gt_waypoints_np[index])
             if distance_obj.get_len() < 1:
+                # If you need at least two points to compute meaningful distances, skip
                 continue
             l2_list.append(distance_obj.get_l2_distance())
-            if distance_obj.get_len() > 1:
-                haus_list.append(distance_obj.get_haus_distance())
-                fourier_difference.append(distance_obj.get_fourier_difference())
+            # if distance_obj.get_len() > 1:
+            #     haus_list.append(distance_obj.get_haus_distance())
+            #     fourier_difference.append(distance_obj.get_fourier_difference())
         if len(l2_list) > 0:
-            distance_dict.update({"L2_distance": np.mean(l2_list)})
+            distance_dict.update({"L2_distance": float(np.mean(l2_list))})
         if len(haus_list) > 0:
-            distance_dict.update({"hausdorff_distance": np.mean(haus_list)})
+            distance_dict.update({"hausdorff_distance": float(np.mean(haus_list))})
         if len(fourier_difference) > 0:
-            distance_dict.update({"fourier_difference": np.mean(fourier_difference)})
+            distance_dict.update({"fourier_difference": float(np.mean(fourier_difference))})
         return distance_dict
 
     def get_valid_np_waypoints(self, torch_waypoints):
