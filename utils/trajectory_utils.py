@@ -30,6 +30,7 @@ def create_sample(ego_tokens, agent_info, bos_token, eos_token, pad_token, targe
     # Build the ego trajectory with BOS and EOS tokens.
     trajectory = np.concatenate([np.array([bos_token]), ego_tokens, np.array([eos_token])])
     # Calculate the number of PAD tokens needed to reach the target sequence length.
+    # agent_info = np.concatenate([np.expand_dims(agent_info[0, :], 0), agent_info])
     n_pad = max(0, target_seq_len - len(trajectory))
     trajectory = np.concatenate([trajectory, np.array([pad_token] * n_pad)])
     # For autoregressive training, the model inputs are the tokens up to the last token,
@@ -331,7 +332,7 @@ class AgentFeatureParser:
         new_agent_info, agent_attr = self.process_agent_info()
 
         if self.simple_deduction:
-            new_agent_info = self._simulate_future_states(new_agent_info, self.max_frame)
+            new_agent_info = self._simulate_future_states(new_agent_info, self.max_frame + 1)
 
         # 2. Concatenate agent attributes to agent_info.
         new_agent_info = self._concatenate_agent_attributes(new_agent_info, agent_attr, self.simple_deduction)

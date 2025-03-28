@@ -141,16 +141,16 @@ class TrajectoryGenerator(nn.Module):
         Transformer decoder forward pass:
           1) self-attention on tgt_emb
           2) cross-attention on memory
-        Return logits of vocab => (tgt_seq_len, batch_size, vocab_size)
+        Return logits of vocab => (tgt seq len, batch size, vocab size)
         """
         dec_out = self.trajectory_gen(
             tgt=tgt_emb,
             memory=memory,  # shape => (some_mem_len, B, D)
             tgt_mask=tgt_mask
         )
-        # => (tgt_seq_len, batch_size, embed)
+        # => (tgt seq len, batch size, embed)
         # Project to vocabulary space
-        pred_traj_points = self.output_projection(dec_out)  # (tgt_seq_len, batch_size, vocab_size)
+        pred_traj_points = self.output_projection(dec_out)  # (tgt seq len, batch size, vocab size)
         return pred_traj_points
 
     def forward(self, data):
@@ -167,21 +167,15 @@ class TrajectoryGenerator(nn.Module):
         env_state = env_state.permute(1, 0, 2, 3)
         mem = [self.get_env_window_around_t(env_state, i) for i in range(t)]
         mem = torch.concatenate([torch.unsqueeze(i, 0) for i in mem], dim=0)
-        # mem = [t, agent * 3, bz, dim] example: torch.Size([10, 11*3, 4, 256])
-        mem = mem.reshape(t * num_agents * 3, bz, dim_agents)
-        tgt = self_state.transpose(0, 1)
-        # tgt = [t, bz, dim]
-        causal_mask = self.create_mask(length)
+        mem = mem.reshape(t * num_agents * 3, bz, dim_agents) # [t, agent * 3, bz, dim]
+        tgt = self_state.transpose(0, 1) # [t, bz, dim]
+        causal_mask = self.create_mask(length) # [t, t]
         # cross attention
-        try:
-            pred_logits = self.decoder(
-                tgt_emb=tgt,
-                memory=mem,
-                tgt_mask=causal_mask
-            )
-        except:
-            import pdb
-            pdb.set_trace()
+        pred_logits = self.decoder(
+            tgt_emb=tgt,
+            memory=mem,
+            tgt_mask=causal_mask
+        )
         # (bz, length, vocab)
         pred_logits = pred_logits.transpose(0, 1)
         return pred_logits, self_state, env_state
@@ -236,10 +230,10 @@ class TrajectoryGenerator(nn.Module):
                 tgt_mask=causal_mask
             )
 
-            # 7) project => (#seq, B, vocab_size)
+            # 7) project => (#seq, B, vocab size)
             logits = self.output_projection(dec_out)
 
-            # 8) take the last position => (B, vocab_size)
+            # 8) take the last position => (B, vocab size)
             next_token_logits = logits[-1, :, :]
 
             # 9) greedy => (B,1)
