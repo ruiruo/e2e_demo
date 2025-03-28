@@ -122,15 +122,37 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
     def after_process(self):
         """
         Remove duplicate samples (trajectories, trajectories_gt, trajectories_goals).
-        Make sure we keep all relevant arrays in sync by reindexing.
+        Make sure we keep all relevant arrays in sync by reindexing, and *ignore any*
+        samples that include '-1' in trajectories, trajectories_gt, or trajectories_goals.
         """
+        # --------------------------------------------------------------------------
+        # 1. FILTER OUT samples that contain -1 in any of the three arrays
+        # --------------------------------------------------------------------------
+        # Build a boolean mask for each array: `True` means "no -1 inside"
+        valid_mask_traj = ~np.any(self.trajectories == -1, axis=1)
+        valid_mask_traj_gt = ~np.any(self.trajectories_gt == -1, axis=1)
+        valid_mask_traj_goal = ~np.any(self.trajectories_goals == -1, axis=1)
+
+        # Combine them: only keep rows where all three are True
+        valid_mask = valid_mask_traj & valid_mask_traj_gt & valid_mask_traj_goal
+
+        # Apply this mask to all arrays
+        self.trajectories = self.trajectories[valid_mask]
+        self.trajectories_gt = self.trajectories_gt[valid_mask]
+        self.trajectories_goals = self.trajectories_goals[valid_mask]
+        self.trajectories_agent_info = self.trajectories_agent_info[valid_mask]
+        self.ego_info = self.ego_info[valid_mask]
+
+        # --------------------------------------------------------------------------
+        # 2. REMOVE DUPLICATES among the filtered samples
+        # --------------------------------------------------------------------------
         seen = {}
         unique_indices = []
         for i, (traj, traj_gt, traj_goal) in enumerate(
-                zip(self.trajectories, self.trajectories_gt, self.trajectories_goals)
+                zip(self.trajectories, self.trajectories_gt)
         ):
-            # Build a hashable key from three arrays
-            key = (traj.tobytes(), traj_gt.tobytes())
+            # Build a hashable key from arrays (or just from traj & traj_gt if you prefer)
+            key = (traj.tobytes(), traj_gt.tobytes(), traj_goal.tobytes())
             if key not in seen:
                 seen[key] = i
                 unique_indices.append(i)
@@ -141,10 +163,10 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         self.trajectories_goals = self.trajectories_goals[unique_indices]
         self.trajectories_agent_info = self.trajectories_agent_info[unique_indices]
         self.ego_info = self.ego_info[unique_indices]
-        # If you rely on self.task_index_list, you may also need to re-map or remove
-        # references to removed items accordingly. For many use cases, you can skip it
-        # or recalculate it if needed.
 
+        # NOTE:
+        # If you rely on self.task_index_list for indexes -> tasks mapping, you may
+        # need to either recalculate it or drop it after the filtering and dedup steps.
 
 # import yaml
 #
