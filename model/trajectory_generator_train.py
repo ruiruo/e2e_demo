@@ -63,11 +63,9 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
         val_loss_dict.update({"val_loss": val_loss})
 
-        customized_metric = TrajectoryGeneratorMetric(self.cfg)
-        dis = customized_metric.calculate_distance(pred_label, batch)
-        val_loss_dict.update(dis)
-
-        print(val_loss_dict)
+        # customized_metric = TrajectoryGeneratorMetric(self.cfg)
+        # dis = customized_metric.calculate_distance(pred_label, batch)
+        # val_loss_dict.update(dis)
         self.log_dict(val_loss_dict, on_epoch=True, prog_bar=True, logger=True)
 
         return val_loss
