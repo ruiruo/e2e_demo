@@ -106,7 +106,7 @@ def tokenize_traj_waypoints(waypoints, m_boundaries, n_boundaries, local2token):
     return token_ids
 
 
-def detokenize_traj_waypoints(token_ids, token2local):
+def detokenize_traj_waypoints(token_ids, token2local, bos_token, eos_token, pad_token):
     """
     Maps tokenized waypoint tokens to their corresponding continuous coordinates, and returns a NumPy array.
 
@@ -124,9 +124,10 @@ def detokenize_traj_waypoints(token_ids, token2local):
     result = []
     for token in token_ids:
         key = str(int(token))
-        coords = token2local.get(key, (float('nan'), float('nan')))
-        result.append(coords)
-    return np.array(result)
+        if key not in [bos_token, eos_token, pad_token]:
+            coords = token2local.get(key)
+            result.append(coords)
+        return np.array(result)
 
 
 def plot_trajectory_with_time(ego_info: np.ndarray):
@@ -778,11 +779,18 @@ class TrajectoryInfoParser:
     def _calc_error_with_token(self, raw_data: np.ndarray, token: np.ndarray):
         # if is_ego_traj:
         if raw_data[-1, 0] < 12:
-            traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
+            traj_with_token = detokenize_traj_waypoints(token, self.detokenizer,
+                                                        self.cfg.bos_token,
+                                                        self.cfg.eos_token,
+                                                        self.cfg.pad_token)
             token_error = TrajectoryDistance(traj_with_token, raw_data)
             self.error_x_under_12.append(token_error.get_l2_distance())
         else:
-            traj_with_token = detokenize_traj_waypoints(token, self.detokenizer)
+            traj_with_token = detokenize_traj_waypoints(token, self.detokenizer,
+                                                        self.cfg.bos_token,
+                                                        self.cfg.eos_token,
+                                                        self.cfg.pad_token)
+
             token_error = TrajectoryDistance(traj_with_token, raw_data)
             self.error_x_over_12.append(token_error.get_l2_distance())
     # else:
@@ -849,4 +857,3 @@ class TrajectoryDistance:
         descriptors = np.fft.fft(complex_points)
         descriptors = np.abs(descriptors[:num_descriptors])
         return descriptors
-

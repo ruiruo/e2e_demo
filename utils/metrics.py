@@ -42,7 +42,10 @@ class TrajectoryGeneratorMetric:
         return distance_dict
 
     def get_valid_np_waypoints(self, torch_waypoints):
-        np_waypoints_valid_detoken = detokenize_traj_waypoints(torch_waypoints, self.detokenizer)
+        np_waypoints_valid_detoken = detokenize_traj_waypoints(torch_waypoints, self.detokenizer,
+                                                               self.cfg.bos_token,
+                                                               self.cfg.eos_token,
+                                                               self.cfg.pad_token)
         return np_waypoints_valid_detoken
 
     def get_hp_predict_waypoints(self, pred_traj_waypoint, bz, length):
