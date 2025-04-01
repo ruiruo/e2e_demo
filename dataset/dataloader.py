@@ -24,7 +24,7 @@ class TrajectoryDataloaderModule(pl.LightningDataModule):
                                        drop_last=True)
         self.val_loader = DataLoader(dataset=TrajectoryDataModule(config=self.cfg, is_train=0),
                                      batch_size=self.cfg.batch_size,
-                                     shuffle=True,
+                                     shuffle=False,
                                      num_workers=self.cfg.num_workers,
                                      pin_memory=True,
                                      worker_init_fn=self.seed_worker,

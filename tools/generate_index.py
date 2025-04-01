@@ -24,67 +24,124 @@ def piecewise_boundaries_1d(
         arcsinh_points_pos=10,
 ):
     """
-    Build a 1D boundary array with:
-      1) arcsinh from [overall_min, uniform_left]
-      2) uniform from [uniform_left, uniform_right] in 'uniform_segments' intervals
-      3) arcsinh from [uniform_right, overall_max]
+    Build a 1D boundary array by combining three regions:
+      1) arcsinh-spaced boundaries from [overall_min, uniform_left] (excluding uniform_left)
+      2) uniform boundaries from [uniform_left, uniform_right] (with uniform_segments intervals)
+      3) arcsinh-spaced boundaries from [uniform_right, overall_max] (excluding uniform_right)
 
-    Ensures that 0 is inside the uniform region if 0 in [uniform_left, uniform_right].
-    If 'uniform_segments' is odd, 0 will be the exact center of the middle interval.
+    If the uniform region covers 0, the interval that straddles 0 is adjusted so that its center is exactly 0.
     """
-    # arcsinh negative side
+    # arcsinh negative side: include one extra point and drop the last (duplicate uniform_left)
     if uniform_left > overall_min:
-        neg_arcsinh = arcsinh_space_scaled(overall_min, uniform_left, arcsinh_points_neg, arcsinh_alpha)
+        neg_arcsinh_full = arcsinh_space_scaled(overall_min, uniform_left, arcsinh_points_neg + 1, arcsinh_alpha)
+        neg_arcsinh = neg_arcsinh_full[:-1]
     else:
-        neg_arcsinh = np.array([uniform_left], dtype=np.float64)
+        neg_arcsinh = np.array([], dtype=np.float64)
 
-    # uniform middle
-    # uniform_segments intervals => uniform_segments+1 boundaries
+    # uniform middle: uniform_segments intervals yield uniform_segments+1 boundaries
     middle = np.linspace(uniform_left, uniform_right, uniform_segments + 1, dtype=np.float64)
 
-    # arcsinh positive side
-    if uniform_right < overall_max:
-        pos_arcsinh = arcsinh_space_scaled(uniform_right, overall_max, arcsinh_points_pos, arcsinh_alpha)
-    else:
-        pos_arcsinh = np.array([uniform_right], dtype=np.float64)
+    # If the uniform region covers 0, adjust the interval straddling 0 so its center becomes exactly 0.
+    if uniform_left < 0 and uniform_right > 0:
+        for i in range(len(middle) - 1):
+            if middle[i] < 0 and middle[i + 1] > 0:
+                # Compute half-width of the current cell.
+                d = (middle[i + 1] - middle[i]) / 2
+                # Force the boundaries to be symmetric around 0.
+                middle[i] = -d
+                middle[i + 1] = d
+                break
 
-    # merge
+    # arcsinh positive side: include extra point and drop the first (duplicate uniform_right)
+    if uniform_right < overall_max:
+        pos_arcsinh_full = arcsinh_space_scaled(uniform_right, overall_max, arcsinh_points_pos + 1, arcsinh_alpha)
+        pos_arcsinh = pos_arcsinh_full[1:]
+    else:
+        pos_arcsinh = np.array([], dtype=np.float64)
+
+    # Merge the three regions and sort the boundaries.
     combined = np.concatenate([neg_arcsinh, middle, pos_arcsinh])
-    combined = np.unique(combined)  # remove duplicates if any
     combined.sort()
     return combined
 
 
-def build_2d_boundaries(x_min, x_max, y_min, y_max):
+def compute_boundaries_by_token_count(overall_min, overall_max, desired_cells,
+                                      uniform_left, uniform_right,
+                                      uniform_segments, arcsinh_alpha=3.0,
+                                      neg_weight=0.5, pos_weight=0.5):
     """
-    Example: we want:
-      - x in [overall_min_x, overall_max_x] = [-10, 40]
-        with a uniform region [-5, 5] subdivided into 5 intervals (=> center interval around 0).
-      - y in [overall_min_y, overall_max_y] = [-5, 5]
-        with a uniform region [-2, 2] subdivided into 5 intervals (=> center interval around 0).
-      - arcsinh outside the uniform region for both axes.
+    Compute a 1D boundaries array such that the total number of cells (intervals) is exactly desired_cells.
+    The total number of boundaries will be desired_cells + 1.
+
+    The uniform (linear) region between uniform_left and uniform_right is divided into
+    'uniform_segments' intervals (uniform_segments must be odd so that 0 is centered).
+
+    The remaining cells are allocated to arcsinh spacing on the negative and positive sides.
+    The allocation between negative and positive sides is unbalanced,
+    controlled by neg_weight and pos_weight.
+
+    Raises a ValueError if desired_cells + 2 is less than uniform_segments.
     """
-    # x-axis: piecewise from [-10, -5, 5, 40]
-    x_boundary = piecewise_boundaries_1d(
-        overall_min=x_min, overall_max=x_max,
-        uniform_left=-5, uniform_right=5,
-        uniform_segments=21,  # must be odd => the middle interval center is x=0
-        arcsinh_alpha=3.0,
-        arcsinh_points_neg=9,
-        arcsinh_points_pos=22,
+    if desired_cells + 2 < uniform_segments:
+        raise ValueError(
+            f"desired_cells + 2 must be at least uniform_segments; "
+            f"got desired_cells={desired_cells} (=> {desired_cells + 2}) and uniform_segments={uniform_segments}"
+        )
+    remaining = desired_cells + 2 - uniform_segments
+    total_weight = neg_weight + pos_weight
+    arcsinh_points_neg = int(np.ceil(remaining * (neg_weight / total_weight)))
+    arcsinh_points_pos = int(remaining - arcsinh_points_neg)
+    boundaries = piecewise_boundaries_1d(
+        overall_min=overall_min,
+        overall_max=overall_max,
+        uniform_left=uniform_left,
+        uniform_right=uniform_right,
+        uniform_segments=uniform_segments,
+        arcsinh_alpha=arcsinh_alpha,
+        arcsinh_points_neg=arcsinh_points_neg,
+        arcsinh_points_pos=arcsinh_points_pos,
+    )
+    return boundaries
+
+
+def compute_2d_boundaries_by_token_count(x_min, x_max, y_min, y_max,
+                                         desired_cells_x, desired_cells_y,
+                                         x_uniform_left, x_uniform_right, x_uniform_segments,
+                                         y_uniform_left, y_uniform_right, y_uniform_segments,
+                                         x_arcsinh_alpha=3.0, y_arcsinh_alpha=3.0,
+                                         x_neg_weight=0.5, x_pos_weight=0.5,
+                                         y_neg_weight=0.5, y_pos_weight=0.5):
+    """
+    Compute 2D boundaries for x and y axes based on desired cell counts.
+
+    Returns:
+      x_boundaries, y_boundaries: each is a sorted 1D numpy array.
+    """
+    x_boundaries = compute_boundaries_by_token_count(
+        overall_min=x_min,
+        overall_max=x_max,
+        desired_cells=desired_cells_x,
+        uniform_left=x_uniform_left,
+        uniform_right=x_uniform_right,
+        uniform_segments=x_uniform_segments,
+        arcsinh_alpha=x_arcsinh_alpha,
+        neg_weight=x_neg_weight,
+        pos_weight=x_pos_weight,
     )
 
-    # y-axis: piecewise from [-5, -2, 2, 5]
-    y_boundary = piecewise_boundaries_1d(
-        overall_min=y_min, overall_max=y_max,
-        uniform_left=-3, uniform_right=3,
-        uniform_segments=15,  # also odd => center interval is y=0
-        arcsinh_alpha=3.0,
-        arcsinh_points_neg=9,
-        arcsinh_points_pos=11,
+    y_boundaries = compute_boundaries_by_token_count(
+        overall_min=y_min,
+        overall_max=y_max,
+        desired_cells=desired_cells_y,
+        uniform_left=y_uniform_left,
+        uniform_right=y_uniform_right,
+        uniform_segments=y_uniform_segments,
+        arcsinh_alpha=y_arcsinh_alpha,
+        neg_weight=y_neg_weight,
+        pos_weight=y_pos_weight,
     )
 
-    return x_boundary, y_boundary
+    return x_boundaries, y_boundaries
 
 
 def create_local2token_ndarray(m_boundaries, n_boundaries):
@@ -127,17 +184,67 @@ def create_local2token_ndarray(m_boundaries, n_boundaries):
     return local2token, token2local
 
 
-# Example usage:
 if __name__ == "__main__":
-    m_max, m_min = 40, -10
-    n_max, n_min = 10, -10
+    # Overall ranges:
+    x_min, x_max = -1, 29
+    y_min, y_max = -5, 5
 
-    x_boundaries, y_boundaries = build_2d_boundaries(m_min, m_max, n_min, n_max)
+    # Suppose you want a high-resolution tokenization.
+    # If you want roughly 500 tokens in the grid, you might set:
+    desired_cells_x = 37
+    desired_cells_y = 11
+
+    # Uniform region parameters:
+    # For x, suppose most data lie between 0 and 15; note that although the overall domain starts at -1,
+    # we force the cell around 0 to be symmetric by our post-processing.
+    x_uniform_left = -1
+    x_uniform_right = 15
+    x_uniform_segments = 27  # odd number of intervals
+
+    # For y, if we want more focus in the central region, e.g., between -3 and 3:
+    y_uniform_left = -4
+    y_uniform_right = 4
+    y_uniform_segments = 11  # odd number of intervals
+
+    # Unbalanced arcsinh allocation:
+    # For x, suppose you want more resolution toward the right (since 0 is already covered in the uniform region).
+    x_neg_weight = 0
+    x_pos_weight = 1
+
+    # For y, a symmetric weighting:
+    y_neg_weight = 0.5
+    y_pos_weight = 0.5
+
+    # Compute boundaries
+    x_boundaries, y_boundaries = compute_2d_boundaries_by_token_count(
+        x_min, x_max, y_min, y_max,
+        desired_cells_x, desired_cells_y,
+        x_uniform_left, x_uniform_right, x_uniform_segments,
+        y_uniform_left, y_uniform_right, y_uniform_segments,
+        x_arcsinh_alpha=5.0, y_arcsinh_alpha=3.0,
+        x_neg_weight=x_neg_weight, x_pos_weight=x_pos_weight,
+        y_neg_weight=y_neg_weight, y_pos_weight=y_pos_weight
+    )
 
     print("x_boundaries:\n", x_boundaries.astype(np.float16).tolist())
     print("y_boundaries:\n", y_boundaries.astype(np.float16).tolist())
 
-    # Visualize
+    # Identify and print the token (cell) that has its center at (0,0)
+    token_x = None
+    token_y = None
+    for i in range(len(x_boundaries) - 1):
+        center_x = (x_boundaries[i] + x_boundaries[i + 1]) / 2
+        if np.isclose(center_x, 0, atol=1e-8):
+            token_x = (x_boundaries[i], x_boundaries[i + 1])
+            break
+
+    for j in range(len(y_boundaries) - 1):
+        center_y = (y_boundaries[j] + y_boundaries[j + 1]) / 2
+        if np.isclose(center_y, 0, atol=1e-8):
+            token_y = (y_boundaries[j], y_boundaries[j + 1])
+            break
+
+    # Visualize the boundaries:
     fig, ax = plt.subplots(figsize=(10, 8))
     for xb in x_boundaries:
         ax.axvline(x=xb, color='blue', linestyle='--', linewidth=0.5)
@@ -146,21 +253,19 @@ if __name__ == "__main__":
 
     ax.set_xlim(x_boundaries[0], x_boundaries[-1])
     ax.set_ylim(y_boundaries[0], y_boundaries[-1])
-    ax.set_title("Piecewise Boundaries with 0,0 as Middle Interval Center")
+    ax.set_title("Computed 2D Boundaries\n(x: {} cells, y: {} cells)".format(desired_cells_x, desired_cells_y))
     ax.set_xlabel("X axis")
     ax.set_ylabel("Y axis")
     plt.show()
-    fig.savefig("/home/nio/reparke2e/configs/token_plot.png", dpi=300)
 
     # Create token map for the grid cells
     local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
-    bos_local = parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries)
-    bos_local = (int(bos_local[0]), int(bos_local[1]))
-    print("BOS:", bos_local, bos_local[0] * (len(y_boundaries) - 1) + bos_local[1])
+
+    print("BOS:", parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries))
     print("local2token shape:", local2token.shape)  # (32, 16)
     print("Total tokens:", local2token.size)  # 32*16=512
 
     with open("/home/nio/reparke2e/configs/token2local.json", "w") as f:
-        json.dump(token2local, f)
+        json.dump(token2local, f, indent=2)
 
     np.save("/home/nio/reparke2e/configs/local2token.npy", local2token)

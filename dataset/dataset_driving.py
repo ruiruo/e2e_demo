@@ -1,6 +1,6 @@
 from utils.config import Configuration
-from utils.trajectory_utils import TrajectoryInfoParser, TrajectoryDistance
-from utils.trajectory_utils import parallel_find_bin, create_sample, detokenize_traj_waypoints
+from utils.trajectory_utils import TrajectoryInfoParser
+from utils.trajectory_utils import parallel_find_bin, create_sample
 from types import SimpleNamespace
 import json
 import numpy as np
@@ -127,7 +127,6 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         Make sure we keep all relevant arrays in sync by reindexing, and *ignore any*
         samples that include '-1' in trajectories, trajectories_gt, or trajectories_goals.
         """
-        # --------------------------------------------------------------------------
         # 1. FILTER OUT samples that contain -1 in any of the three arrays
         # --------------------------------------------------------------------------
         # Build a boolean mask for each array: `True` means "no -1 inside"
@@ -165,16 +164,3 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         self.trajectories_goals = self.trajectories_goals[unique_indices]
         self.trajectories_agent_info = self.trajectories_agent_info[unique_indices]
         self.ego_info = self.ego_info[unique_indices]
-
-        # NOTE:
-        # If you rely on self.task_index_list for indexes -> tasks mapping, you may
-        # need to either recalculate it or drop it after the filtering and dedup steps.
-
-# import yaml
-#
-# cfg_path = "/home/shaoqian.li/reparke2e/configs/training.yaml"
-#
-# with open(cfg_path, 'rb') as f:
-#     config_obj = yaml.safe_load(f)
-# con_obj = Configuration(**config_obj)
-# TrajectoryDataModule(con_obj, True)
