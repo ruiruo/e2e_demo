@@ -25,7 +25,8 @@ class TrajectoryGenerator(nn.Module):
             pos_embed_dim=self.cfg.embedding_dim,
             pad_token=self.cfg.pad_token,
             feat_dim=5,  # features: (heading, v, acc, length, width, abs_dis, hit_dis)
-            abs_dis_local=5  # example hyperparameter
+            abs_dis_local=5,
+            dropout=0.5
         )
         # Decoder
         decoder_layer = nn.TransformerDecoderLayer(
@@ -167,9 +168,9 @@ class TrajectoryGenerator(nn.Module):
         env_state = env_state.permute(1, 0, 2, 3)
         mem = [self.get_env_window_around_t(env_state, i) for i in range(t)]
         mem = torch.concatenate([torch.unsqueeze(i, 0) for i in mem], dim=0)
-        mem = mem.reshape(t * num_agents * 3, bz, dim_agents) # [t, agent * 3, bz, dim]
-        tgt = self_state.transpose(0, 1) # [t, bz, dim]
-        causal_mask = self.create_mask(length) # [t, t]
+        mem = mem.reshape(t * num_agents * 3, bz, dim_agents)  # [t, agent * 3, bz, dim]
+        tgt = self_state.transpose(0, 1)  # [t, bz, dim]
+        causal_mask = self.create_mask(length)  # [t, t]
         # cross attention
         pred_logits = self.decoder(
             tgt_emb=tgt,

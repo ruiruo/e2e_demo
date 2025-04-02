@@ -63,15 +63,15 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
         val_loss_dict.update({"val_loss": val_loss})
 
-        # customized_metric = TrajectoryGeneratorMetric(self.cfg)
-        # dis = customized_metric.calculate_distance(pred_label, batch)
-        # val_loss_dict.update(dis)
+        customized_metric = TrajectoryGeneratorMetric(self.cfg)
+        dis = customized_metric.calculate_distance(pred_label, batch)
+        val_loss_dict.update(dis)
         self.log_dict(val_loss_dict, on_epoch=True, prog_bar=True, logger=True)
 
         return val_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.RMSprop(self.parameters(),
+        optimizer = torch.optim.Adam(self.parameters(),
                                         lr=self.cfg.learning_rate,
                                         weight_decay=self.cfg.weight_decay)
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=self.cfg.epochs)

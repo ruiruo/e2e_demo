@@ -65,7 +65,7 @@ class BackgroundEncoder(nn.Module):
       3) output it as  K, V
     """
 
-    def __init__(self, pos_embed_dim=256, pad_token=0, feat_dim=7, abs_dis_local=5):
+    def __init__(self, pos_embed_dim=256, pad_token=0, feat_dim=7, abs_dis_local=5, dropout=0.5):
         super(BackgroundEncoder, self).__init__()
         # Feature = (heading, v, acc, length, width, abs_dis, hit_dis)
         # heading, v, acc -> speed
@@ -81,7 +81,7 @@ class BackgroundEncoder(nn.Module):
             d_model=pos_embed_dim,
             nhead=4,
             dim_feedforward=pos_embed_dim,
-            dropout=0.1,
+            dropout=0.5,
             activation="relu",
             norm_first=True,
         )
