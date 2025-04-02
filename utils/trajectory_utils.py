@@ -176,6 +176,7 @@ class TopologyHistory:
         self.max_frame = cfg.max_frame
         self.max_agent = cfg.max_agent
         self.simple_deduction = cfg.simple_deduction
+        self.pad_token = cfg.pad_token
         self.frame_id = frame_id
         self.local2token = local2token
         self.info = {}
@@ -241,7 +242,7 @@ class TopologyHistory:
                 final_agent_raw_pos = agent_raw_pos_selected
 
             invalid_token_mask = final_agent_info[:, :, 0] == -1
-            final_agent_info[invalid_token_mask] = -1
+            final_agent_info[invalid_token_mask] = self.pad_token
             final_agent_raw_pos[invalid_token_mask] = -1
 
             self.info["agent_info"] = final_agent_info
@@ -266,7 +267,7 @@ class TopologyHistory:
             if n_valid >= self.max_agent:
                 agent_organized = valid_rows[:self.max_agent, :]
             else:
-                pad = np.full((self.max_agent - n_valid, n_features), -1, dtype=agent_info.dtype)
+                pad = np.full((self.max_agent - n_valid, n_features), self.pad_token, dtype=agent_info.dtype)
                 agent_organized = np.vstack((valid_rows, pad))
 
             self.info["agent_info"] = agent_organized
