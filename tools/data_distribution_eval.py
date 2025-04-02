@@ -14,17 +14,17 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 cfg_path = "../configs/training.yaml"
 config_obj = get_train_config_obj(config_path=cfg_path)
 # Limit the number of samples for evaluation purposes
-config_obj.max_train = 10000000
-config_obj.max_val = 10000000
-# config_obj.log_every_n_steps = 2
-# config_obj.data_dir = "/home/nio/data/"
-# config_obj.log_dir = config_obj.log_dir.replace("shaoqian.li", "nio")
-# config_obj.checkpoint_dir = config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
-# config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
-# config_obj.local_data_save_dir = "/home/nio/"
-# config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
-# config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
-# config_obj.batch_size = 4
+config_obj.max_train = 100
+config_obj.max_val = 100
+config_obj.log_every_n_steps = 2
+config_obj.data_dir = "/home/nio/data/"
+config_obj.log_dir = config_obj.log_dir.replace("shaoqian.li", "nio")
+config_obj.checkpoint_dir = config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
+config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
+config_obj.local_data_save_dir = "/home/nio/"
+config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
+config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
+config_obj.batch_size = 4
 
 # Load the token-to-location mapping from the detokenizer file.
 with open(config_obj.detokenizer, "r") as f:
@@ -225,8 +225,8 @@ def compare_token_distribution(stats_train, stats_val):
 
     # Plot normalized token distributions
     plt.figure(figsize=(12, 6))
-    plt.plot(tokens_union, p_train, label="Train Normalized Distribution", linestyle='-')
-    plt.plot(tokens_union, p_val, label="Val Normalized Distribution", linestyle='-')
+    plt.plot(tokens_union, p_train, label="Train Normalized Distribution", marker='o', linestyle='-')
+    plt.plot(tokens_union, p_val, label="Val Normalized Distribution", marker='o', linestyle='-')
     plt.xlabel("Token ID")
     plt.ylabel("Normalized Frequency")
     plt.title("Normalized Token Distribution Comparison")

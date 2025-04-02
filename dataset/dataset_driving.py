@@ -127,7 +127,28 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         Make sure we keep all relevant arrays in sync by reindexing, and *ignore any*
         samples that include '-1' in trajectories, trajectories_gt, or trajectories_goals.
         """
-        # 1. FILTER OUT samples that contain -1 in any of the three arrays
+        # --------------------------------------------------------------------------
+        # 1. REMOVE DUPLICATES among the filtered samples
+        # --------------------------------------------------------------------------
+        seen = {}
+        unique_indices = []
+        for i, (traj, traj_gt, traj_agent) in enumerate(
+                zip(self.trajectories, self.trajectories_gt, self.trajectories_agent_info[:, 0, :, 0])
+        ):
+            # Build a hashable key from arrays (or just from traj & traj_gt if you prefer)
+            key = (traj.tobytes(), traj_gt.tobytes(), traj_agent.tobytes())
+            if key not in seen:
+                seen[key] = i
+                unique_indices.append(i)
+
+        # Re-slice to keep only unique items across all arrays
+        self.trajectories = self.trajectories[unique_indices]
+        self.trajectories_gt = self.trajectories_gt[unique_indices]
+        self.trajectories_goals = self.trajectories_goals[unique_indices]
+        self.trajectories_agent_info = self.trajectories_agent_info[unique_indices]
+        self.ego_info = self.ego_info[unique_indices]
+
+        # 2. FILTER OUT samples that contain -1 in any of the three arrays
         # --------------------------------------------------------------------------
         # Build a boolean mask for each array: `True` means "no -1 inside"
         valid_mask_traj = ~np.any(self.trajectories == -1, axis=1)
@@ -143,24 +164,3 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         self.trajectories_goals = self.trajectories_goals[valid_mask]
         self.trajectories_agent_info = self.trajectories_agent_info[valid_mask]
         self.ego_info = self.ego_info[valid_mask]
-
-        # --------------------------------------------------------------------------
-        # 2. REMOVE DUPLICATES among the filtered samples
-        # --------------------------------------------------------------------------
-        seen = {}
-        unique_indices = []
-        for i, (traj, traj_gt) in enumerate(
-                zip(self.trajectories, self.trajectories_gt)
-        ):
-            # Build a hashable key from arrays (or just from traj & traj_gt if you prefer)
-            key = (traj.tobytes(), traj_gt.tobytes())
-            if key not in seen:
-                seen[key] = i
-                unique_indices.append(i)
-
-        # Re-slice to keep only unique items across all arrays
-        self.trajectories = self.trajectories[unique_indices]
-        self.trajectories_gt = self.trajectories_gt[unique_indices]
-        self.trajectories_goals = self.trajectories_goals[unique_indices]
-        self.trajectories_agent_info = self.trajectories_agent_info[unique_indices]
-        self.ego_info = self.ego_info[unique_indices]
