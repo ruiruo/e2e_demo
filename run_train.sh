@@ -1,0 +1,1 @@
+source activate reparke2e; cd reparke2e/; nohup python train.py > train.output &
