@@ -123,9 +123,9 @@ def detokenize_traj_waypoints(token_ids, token2local, bos_token, eos_token, pad_
 
     result = []
     for token in token_ids:
-        key = str(int(token))
+        key = int(token)
         if key not in [bos_token, eos_token, pad_token]:
-            coords = token2local.get(key)
+            coords = token2local.get(str(key))
             result.append(coords)
         else:
             result.append([np.nan, np.nan])
