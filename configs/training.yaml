@@ -67,7 +67,7 @@ tf_de_dropout: 0.4
 
 ##################### Data #####################
 max_frame: 10
-token_nums: 510
+token_nums: 511
 bos_token: 508
 eos_token: 509
 pad_token: 510
