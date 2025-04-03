@@ -7,7 +7,7 @@ is_train: True
 multi_agent_info: False
 simple_deduction: True
 max_train: 5000000
-max_val: 100000
+max_val: 1000000
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
@@ -41,12 +41,13 @@ log_every_n_steps: 100
 check_val_every_n_epoch: 2
 epochs: 500
 learning_rate: 0.0001
-weight_decay: 0.00001
+weight_decay: 0.0001
 batch_size: 256
-num_workers: 10
+num_workers: 15
 max_agent: 5
 ignore_bos_loss: True
 device: "cuda"
+customized_metric: False
 # resume_path: ""
 
 ##################### Data Process #####################

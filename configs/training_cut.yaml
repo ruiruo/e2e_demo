@@ -6,31 +6,31 @@ validation_dir: "val"
 is_train: True
 multi_agent_info: False
 simple_deduction: True
-max_train : 500
-max_val: 100
+max_train: 500000
+max_val: 100000
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
 tfrecord_files_list: "/share-pnc/shaoqian.li/data/data_list.txt" # same_navi_1217_4w: 143297340
-local_data_save_dir: "/share-pnc/shaoqian.li/data/raw_data"
+local_data_save_dir: "/home/shaoqian.li/data/raw_data"
 save_tf_to_local_tmp_path: "/tmp/random_tmp"
 save_data_num_per: 35
-case_size: 10000
+case_size: 50000
 
 # road info
 max_lane_num: 50
 max_node_num_per_lane: 25
 vector_graph_feature_fea_dim: [
-    start_x,
-    start_y,
-    end_x,
-    end_y,
-    lane_id, # no use
-    lane_width,
-    left_cross_able, # no use
-    right_cross_able, # no use
-    speed_limit,
-  ]
+  start_x,
+  start_y,
+  end_x,
+  end_y,
+  lane_id, # no use
+  lane_width,
+  left_cross_able, # no use
+  right_cross_able, # no use
+  speed_limit,
+]
 ##################### Basic Options #####################
 data_mode: "topology"
 num_gpus: 1
@@ -38,15 +38,16 @@ cuda_device_index: "0"
 log_root_dir: '/home/shaoqian.li/log/'
 checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
 log_every_n_steps: 100
-check_val_every_n_epoch: 5
-epochs: 10
+check_val_every_n_epoch: 2
+epochs: 500
 learning_rate: 0.0001
-weight_decay: 0.00001
-batch_size: 512
-num_workers: 8
-max_agent: 8
+weight_decay: 0.0001
+batch_size: 256
+num_workers: 15
+max_agent: 5
 ignore_bos_loss: True
 device: "cuda"
+customized_metric: True
 # resume_path: ""
 
 ##################### Data Process #####################
@@ -54,34 +55,25 @@ tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
 detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 768
+embedding_dim: 512
 
 ##################### Target #####################
 
 ##################### Decoder #####################
 item_number: 4
-tf_de_dim: 768
+tf_de_dim: 512
 tf_de_heads: 4
 tf_de_layers: 8
-tf_de_dropout: 0.05
+tf_de_dropout: 0.4
 
 ##################### Data #####################
 max_frame: 10
-token_nums: 1653
-bos_token: 1650
-eos_token: 1651
-pad_token: 1652
+token_nums: 511
+bos_token: 508
+eos_token: 509
+pad_token: 510
 x_boundaries:
-            [-10.0, -9.203125, -8.4609375, -7.7734375, -7.13671875, -6.54296875, -5.9921875, -5.48046875, -5.0,
-            -4.5234375, -4.046875, -3.572265625, -3.095703125, -2.619140625, -2.142578125, -1.6669921875, -1.1904296875,
-             -0.71435546875, -0.238037109375, 0.238037109375, 0.71435546875, 1.1904296875, 1.6669921875, 2.142578125,
-             2.619140625, 3.095703125, 3.572265625, 4.046875, 4.5234375, 5.0, 5.578125, 6.2109375, 6.89453125,
-             7.64453125, 8.4609375, 9.359375, 10.3359375, 11.4140625, 12.59375, 13.8828125, 15.3046875, 16.859375,
-             18.5625, 20.453125, 22.515625, 24.78125, 27.28125, 30.015625, 33.03125, 36.34375, 40.0]
+  [ -1.0, -0.29638671875, 0.29638671875, 0.77783203125, 1.3701171875, 1.962890625, 2.5546875, 3.1484375, 3.740234375, 4.33203125, 4.92578125, 5.51953125, 6.109375, 6.703125, 7.296875, 7.890625, 8.484375, 9.0703125, 9.6640625, 10.2578125, 10.8515625, 11.4453125, 12.0390625, 12.6328125, 13.21875, 13.8125, 14.40625, 15.0, 15.8671875, 16.78125, 17.734375, 18.734375, 19.796875, 20.921875, 22.09375, 23.34375, 24.640625, 26.015625, 27.46875, 29.0 ]
+
 y_boundaries:
-            [-10.0, -8.7265625, -7.6015625, -6.6015625, -5.71484375, -4.921875, -4.21484375, -3.576171875, -3.0,
-             -2.599609375, -2.19921875, -1.7998046875, -1.400390625, -1.0, -0.60009765625, -0.199951171875,
-             0.199951171875, 0.60009765625, 1.0, 1.400390625, 1.7998046875, 2.19921875, 2.599609375, 3.0, 3.45703125,
-             3.951171875, 4.48828125, 5.07421875, 5.71484375, 6.4140625, 7.1875, 8.03125, 8.96875, 10.0]
-
-
+  [ -5.0, -4.0, -3.2734375, -2.544921875, -1.818359375, -1.0908203125, -0.363525390625, 0.363525390625, 1.0908203125, 1.818359375, 2.544921875, 3.2734375, 4.0, 5.0 ]

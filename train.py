@@ -9,6 +9,7 @@ from model.trajectory_generator_train import TrajectoryTrainingModule
 cfg_path = "./configs/training.yaml"
 seed_everything(15)
 config_obj = get_train_config_obj(config_path=cfg_path)
+
 model = TrajectoryTrainingModule(config_obj)
 
 print(model.gen_model)

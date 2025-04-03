@@ -46,7 +46,7 @@ class Configuration:
     weight_decay: float
     batch_size: int
     num_workers: int
-
+    customized_metric:bool
     # Target Options
 
     # Encoder Options
