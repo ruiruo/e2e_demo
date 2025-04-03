@@ -47,7 +47,7 @@ num_workers: 15
 max_agent: 5
 ignore_bos_loss: True
 device: "cuda"
-customized_metric: False
+customized_metric: True
 # resume_path: ""
 
 ##################### Data Process #####################

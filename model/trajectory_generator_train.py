@@ -71,7 +71,7 @@ class TrajectoryTrainingModule(pl.LightningModule):
         return val_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(),
+        optimizer = torch.optim.RMSprop(self.parameters(),
                                         lr=self.cfg.learning_rate,
                                         weight_decay=self.cfg.weight_decay)
         lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=self.cfg.epochs)
