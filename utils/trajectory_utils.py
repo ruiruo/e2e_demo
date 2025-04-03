@@ -123,11 +123,13 @@ def detokenize_traj_waypoints(token_ids, token2local, bos_token, eos_token, pad_
 
     result = []
     for token in token_ids:
-        key = str(int(token))
+        key = int(token)
         if key not in [bos_token, eos_token, pad_token]:
-            coords = token2local.get(key)
+            coords = token2local.get(str(key))
             result.append(coords)
-        return np.array(result)
+        else:
+            result.append([np.nan, np.nan])
+    return np.array(result)
 
 
 def plot_trajectory_with_time(ego_info: np.ndarray):
@@ -811,24 +813,13 @@ class TrajectoryInfoParser:
 # TODO: eval it
 class TrajectoryDistance:
     def __init__(self, prediction_points_np, gt_points_np):
-        self.prediction_points_np = prediction_points_np
-        self.gt_points_np = gt_points_np
+        if prediction_points_np.shape[0] != gt_points_np.shape[0]:
+            raise ValueError("prediction_points_np and gt_points_np length inconsistency")
 
-        self.cut_stop_segment()
+        valid_mask = ~(np.all(np.isnan(prediction_points_np), axis=1) | np.all(np.isnan(gt_points_np), axis=1))
 
-    def cut_stop_segment(self, stop_threshold=0.001):
-        distance_list = np.linalg.norm(self.gt_points_np[1:, :] - self.gt_points_np[:-1, :], axis=-1)
-        threshold_bool_list = abs(distance_list) < stop_threshold
-
-        stop_index = -1
-        for index in range(0, len(threshold_bool_list)):
-            inverse_index = len(threshold_bool_list) - index - 1
-            if not threshold_bool_list[inverse_index]:
-                stop_index = inverse_index + 1
-                break
-
-        self.prediction_points_np = self.prediction_points_np[:0]  # Empty array
-        self.gt_points_np = self.gt_points_np[:0]  # Empty array
+        self.prediction_points_np = prediction_points_np[valid_mask]
+        self.gt_points_np = gt_points_np[valid_mask]
 
     def get_len(self):
         return self.gt_points_np.shape[0]
