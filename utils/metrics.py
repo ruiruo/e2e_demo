@@ -16,6 +16,7 @@ class TrajectoryGeneratorMetric:
         bz, length = batch["labels"].shape
         if self.cfg.ignore_bos_loss:
             length -= 1
+            pred_traj_waypoints = pred_traj_waypoints[:, 1:, :]
         prediction_waypoints = self.get_hp_predict_waypoints(pred_traj_waypoints, bz, length)
         gt_waypoints = self.get_hp_waypoints(batch['labels'])
         gt_prediction_waypoints_np = []

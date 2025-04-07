@@ -51,24 +51,28 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         val_loss_dict = {}
-        pred_logits, _, _ = self.gen_model(batch)
+        pred, _, _ = self.gen_model(batch)
         # Adjust labels if needed, for example, ignoring the BOS token if configured
         if self.cfg.ignore_bos_loss:
             label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
-            pred_logits = pred_logits[:, 1:]
+            pred_logits = pred[:, 1:]
             bz, t, vocab = pred_logits.shape
             pred_logits = pred_logits.reshape([bz * t, vocab])
             teacher_forcing_loss = self.loss_func(pred_logits, label)
         else:
             label = batch['labels'].reshape(-1).to(self.cfg.device)
-            bz, t, vocab = pred_logits.shape
-            pred_logits = pred_logits.reshape([bz * t, vocab])
+            bz, t, vocab = pred.shape
+            pred_logits = pred.reshape([bz * t, vocab])
             teacher_forcing_loss = self.loss_func(pred_logits, label)
         if self.cfg.customized_metric:
-            customized_metric = TrajectoryGeneratorMetric(self.cfg)
-            dis = customized_metric.calculate_distance(pred_logits, batch)
-            if dis.get("L2_distance", None) is not None:
-                val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
+            # todo: debug here
+            try:
+                customized_metric = TrajectoryGeneratorMetric(self.cfg)
+                dis = customized_metric.calculate_distance(pred.reshape([bz, t, vocab]), batch)
+                if dis.get("L2_distance", None) is not None:
+                    val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
+            except:
+                pass
 
         # ----- Autoregressive (Predict) Mode -----
         # Use the predict() method to perform autoregressive generation.
