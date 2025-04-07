@@ -21,7 +21,9 @@ train_config_obj.local_data_save_dir = "/home/nio/"
 train_config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
 train_config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
 train_config_obj.batch_size = 4
-model = TrajectoryPredictModule(train_config_obj)
+model = TrajectoryPredictModule(infer_cfg=pred_config_obj,
+                                train_cfg=train_config_obj,
+                                device="gpu")
 
 data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj, is_train=1),
                   batch_size=train_config_obj.batch_size,
@@ -30,16 +32,19 @@ data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj, is_train
                   pin_memory=True,
                   drop_last=True)
 
-print(model.model)
-
 print(len(data))
 
-trainer = pl.Trainer(gpus=1)
+trainer = Trainer(
+    accelerator="gpu",
+    # strategy='ddp_find_unused_parameters_true',
+    devices=1,
+    profiler='simple'
+)
 
-predictor = TrajectoryPredictModule.load_from_checkpoint(pred_config_obj, cfg=cfg)
+predictor = TrajectoryPredictModule.load_from_checkpoint(pred_config_obj, cfg=pred_config_obj)
 
 # Run prediction using the Lightning Trainer
-predictions = trainer.predict(predictor, dataloaders=predict_dataloader)
+predictions = trainer.predict(predictor, dataloaders=data)
 
 # mlflow_logger = MLFlowLogger(
 #     experiment_name="e2e_planner",
