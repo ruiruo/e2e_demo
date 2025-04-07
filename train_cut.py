@@ -36,5 +36,4 @@ trainer = Trainer(
     profiler='simple'
 )
 
-
 trainer.fit(model=model, datamodule=data, ckpt_path=config_obj.resume_path)

@@ -26,14 +26,15 @@ class TrajectoryGenerator(nn.Module):
             pad_token=self.cfg.pad_token,
             feat_dim=5,  # features: (heading, v, acc, length, width, abs_dis, hit_dis)
             abs_dis_local=5,
-            dropout=0.5
+            dropout=self.cfg.dropout,
+            num_layers=self.cfg.num_topy_layers
         )
         # Decoder
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=self.cfg.embedding_dim,
             nhead=self.cfg.tf_de_heads,
             dim_feedforward=self.cfg.tf_de_dim,
-            dropout=self.cfg.tf_de_dropout,
+            dropout=self.cfg.dropout,
             activation='relu'
         )
         self.trajectory_gen = nn.TransformerDecoder(decoder_layer, num_layers=self.cfg.tf_de_layers)

@@ -37,12 +37,12 @@ num_gpus: 1
 cuda_device_index: "0"
 log_root_dir: '/home/shaoqian.li/log/'
 checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
-log_every_n_steps: 100
-check_val_every_n_epoch: 2
-epochs: 50
-learning_rate: 0.0001
-weight_decay: 0.0001
-batch_size: 256
+log_every_n_steps: 200
+check_val_every_n_epoch: 1
+epochs: 200
+learning_rate: 0.00002
+weight_decay: 0.0002
+batch_size: 512
 num_workers: 15
 max_agent: 5
 ignore_bos_loss: True
@@ -55,16 +55,15 @@ tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
 detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 512
+embedding_dim: 256
 
 ##################### Target #####################
 
 ##################### Decoder #####################
-item_number: 8
-tf_de_dim: 512
-tf_de_heads: 8
+dropout: 0.6
+tf_de_dim: 256
+tf_de_heads: 4
 tf_de_layers: 4
-tf_de_dropout: 0.6
 
 ##################### Data #####################
 max_frame: 10

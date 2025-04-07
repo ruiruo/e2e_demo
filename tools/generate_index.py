@@ -189,29 +189,27 @@ if __name__ == "__main__":
     x_min, x_max = -1, 29
     y_min, y_max = -5, 5
 
-    # Suppose you want a high-resolution tokenization.
-    # If you want roughly 500 tokens in the grid, you might set:
-    desired_cells_x = 37
-    desired_cells_y = 11
+    # To obtain roughly 1,000 tokens in the grid while preserving the 3:1 balance,
+    # note that the total number of tokens will be:
+    #   (desired_cells_x + 2) * (desired_cells_y + 2)
+    # One possible choice is:
+    desired_cells_x = 53  # (55 cells on x-axis)
+    desired_cells_y = 16  # (18 cells on y-axis)
+    # Total tokens = 55 * 18 = 990 (~1,000 tokens)
 
     # Uniform region parameters:
-    # For x, suppose most data lie between 0 and 15; note that although the overall domain starts at -1,
-    # we force the cell around 0 to be symmetric by our post-processing.
     x_uniform_left = -1
     x_uniform_right = 15
-    x_uniform_segments = 27  # odd number of intervals
+    x_uniform_segments = 37  # must be odd to center 0
 
-    # For y, if we want more focus in the central region, e.g., between -3 and 3:
-    y_uniform_left = -4
-    y_uniform_right = 4
-    y_uniform_segments = 11  # odd number of intervals
+    y_uniform_left = -5
+    y_uniform_right = 5
+    y_uniform_segments = 17  # must be odd
 
     # Unbalanced arcsinh allocation:
-    # For x, suppose you want more resolution toward the right (since 0 is already covered in the uniform region).
     x_neg_weight = 0
     x_pos_weight = 1
 
-    # For y, a symmetric weighting:
     y_neg_weight = 0.5
     y_pos_weight = 0.5
 
@@ -229,7 +227,7 @@ if __name__ == "__main__":
     print("x_boundaries:\n", x_boundaries.astype(np.float16).tolist())
     print("y_boundaries:\n", y_boundaries.astype(np.float16).tolist())
 
-    # Identify and print the token (cell) that has its center at (0,0)
+    # Identify the token (cell) with center at (0,0)
     token_x = None
     token_y = None
     for i in range(len(x_boundaries) - 1):
@@ -253,7 +251,8 @@ if __name__ == "__main__":
 
     ax.set_xlim(x_boundaries[0], x_boundaries[-1])
     ax.set_ylim(y_boundaries[0], y_boundaries[-1])
-    ax.set_title("Computed 2D Boundaries\n(x: {} cells, y: {} cells)".format(desired_cells_x, desired_cells_y))
+    ax.set_title(
+        "Computed 2D Boundaries\n(x: {} cells, y: {} cells)".format(len(x_boundaries) - 1, len(y_boundaries) - 1))
     ax.set_xlabel("X axis")
     ax.set_ylabel("Y axis")
     plt.show()
@@ -262,10 +261,10 @@ if __name__ == "__main__":
     local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
 
     print("BOS:", parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries))
-    print("local2token shape:", local2token.shape)  # (32, 16)
-    print("Total tokens:", local2token.size)  # 32*16=512
+    print("local2token shape:", local2token.shape)
+    print("Total tokens:", local2token.size)
 
-    with open("/home/nio/reparke2e/configs/token2local.json", "w") as f:
+    with open("/home/nio/reparke2e/configs/token2local_%d.json" % len(token2local), "w") as f:
         json.dump(token2local, f, indent=2)
 
-    np.save("/home/nio/reparke2e/configs/local2token.npy", local2token)
+    np.save("/home/nio/reparke2e/configs/local2token_%d.npy" % len(token2local), local2token)

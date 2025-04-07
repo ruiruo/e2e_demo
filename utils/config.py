@@ -30,7 +30,7 @@ class Configuration:
     max_lane_num: int
     max_node_num_per_lane: int
     vector_graph_feature_fea_dim: list
-    max_train:int
+    max_train: int
     max_val: int
 
     # Basic Options
@@ -46,17 +46,17 @@ class Configuration:
     weight_decay: float
     batch_size: int
     num_workers: int
-    customized_metric:bool
-    # Target Options
-
+    customized_metric: bool
+    # Model Options
+    dropout: float
     # Encoder Options
     embedding_dim: int
+    num_topy_layers: int
     # Decoder Options
     item_number: int
     tf_de_dim: int
     tf_de_heads: int
     tf_de_layers: int
-    tf_de_dropout: float
 
     # Tokenizer
     x_boundaries: np.ndarray
@@ -72,6 +72,7 @@ class Configuration:
     checkpoint_dir: str = None
     is_train: bool = True
     ignore_bos_loss: bool = True
+
 
 @dataclass
 class InferenceConfiguration:
