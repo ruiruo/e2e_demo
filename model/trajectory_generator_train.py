@@ -31,6 +31,7 @@ class TrajectoryTrainingModule(pl.LightningModule):
                 torch.nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
                 if m.bias is not None:
                     torch.nn.init.constant_(m.bias, 0)
+
         self.gen_model.apply(init_func)
 
     def batch_one_step(self, batch):
@@ -47,28 +48,42 @@ class TrajectoryTrainingModule(pl.LightningModule):
         return pred_label, label
 
     def training_step(self, batch, batch_idx):
-        loss_dict = {}
         pred_label, label = self.batch_one_step(batch)
         train_loss = self.loss_func(pred_label, label)
-        loss_dict.update({"train_loss": train_loss})
-        self.log_dict(loss_dict, on_epoch=True, prog_bar=True, logger=True)
+        metrics = {"train_loss": float(train_loss.to("cpu"))}
+        self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
         return train_loss
 
     def validation_step(self, batch, batch_idx):
-        val_loss_dict = {}
-
+        # ----- Teacher Forcing Mode -----
+        # Use the forward() pass to get the logits and compute the cross-entropy loss.
         pred_label, label = self.batch_one_step(batch)
+        # Adjust labels if needed, for example, ignoring the BOS token
+        teacher_forcing_loss = self.loss_func(pred_label, label)
+        customized_metric = TrajectoryGeneratorMetric(self.cfg)
+        teacher_forcing_dis = customized_metric.calculate_distance(pred_label, batch)
 
-        val_loss = self.loss_func(pred_label, label)
+        # ----- Autoregressive (Predict) Mode -----
+        # Use the predict() method to perform autoregressive generation.
+        # 'predict_token_num' should be set according to your generation length requirement.
+        predicted_tokens = self.gen_model.predict(batch, predict_token_num=self.cfg.max_frame)
 
-        val_loss_dict.update({"val_loss": val_loss})
-        if self.cfg.customized_metric:
-            customized_metric = TrajectoryGeneratorMetric(self.cfg)
-            dis = customized_metric.calculate_distance(pred_label, batch)
-            val_loss_dict.update(dis)
-        self.log_dict(val_loss_dict, on_epoch=True, prog_bar=True, logger=True)
+        # For demonstration, we assume the ground truth tokens to compare against are the labels,
+        # skipping the BOS token if needed. Adjust the slicing as appropriate.
+        true_tokens = batch['labels'][:, 1:1 + predicted_tokens.size(1)].to(self.cfg.device)
 
-        return val_loss
+        # Compute a simple accuracy metric between the generated tokens and the ground truth tokens.
+        # Replace with a more task-specific metric if needed.
+        val_prediction_accuracy = torch.Tensor(predicted_tokens == true_tokens).to(torch.float32).mean()
+
+        # ----- Log both metrics -----
+        metrics = {
+            "val_teacher_forcing_loss": float(teacher_forcing_loss.to("cpu")),
+            "val_teacher_forcing_L2_dis": teacher_forcing_dis["L2_distance"],
+            "val_prediction_accuracy": float(val_prediction_accuracy.to("cpu"))
+        }
+        self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
+        return metrics
 
     def configure_optimizers(self):
         optimizer = torch.optim.RMSprop(self.parameters(),

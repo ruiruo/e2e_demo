@@ -55,16 +55,16 @@ tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
 detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 1536
+embedding_dim: 512
 
 ##################### Target #####################
 
 ##################### Decoder #####################
 item_number: 8
-tf_de_dim: 1536
+tf_de_dim: 512
 tf_de_heads: 8
-tf_de_layers: 16
-tf_de_dropout: 0.5
+tf_de_layers: 4
+tf_de_dropout: 0.6
 
 ##################### Data #####################
 max_frame: 10
