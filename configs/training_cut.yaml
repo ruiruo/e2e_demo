@@ -56,15 +56,13 @@ detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
 embedding_dim: 128
-
-##################### Target #####################
-
+num_topy_layers: 1
 ##################### Decoder #####################
+item_number: 8
 dropout: 0.6
 tf_de_dim: 128
-tf_de_heads: 3
+tf_de_heads: 2
 tf_de_layers: 3
-
 ##################### Data #####################
 max_frame: 10
 token_nums: 511
