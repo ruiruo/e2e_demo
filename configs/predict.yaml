@@ -1,0 +1,4 @@
+model_ckpt_path: "/home/nio/checkpoints/exp_2025_4_2_9_42_59/epoch=37-val_loss=0.50.ckpt"
+training_config: "training"
+
+

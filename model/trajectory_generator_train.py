@@ -1,10 +1,9 @@
-import pytorch_lightning as pl
-import torch
-
 from loss.traj_point_loss import TokenTrajWayPointLoss
 from model.trajectory_generator_model import TrajectoryGenerator
 from utils.config import Configuration
 from utils.metrics import TrajectoryGeneratorMetric
+import pytorch_lightning as pl
+import torch
 
 
 class TrajectoryTrainingModule(pl.LightningModule):
@@ -34,7 +33,7 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
         self.gen_model.apply(init_func)
 
-    def batch_one_step(self, batch):
+    def training_step(self, batch, batch_idx):
         pred_label, _, _ = self.gen_model(batch)
         if self.cfg.ignore_bos_loss:
             label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
@@ -45,23 +44,31 @@ class TrajectoryTrainingModule(pl.LightningModule):
             label = batch['labels'].reshape(-1).to(self.cfg.device)
             bz, t, vocab = pred_label.shape
             pred_label = pred_label.reshape([bz * t, vocab])
-        return pred_label, label
-
-    def training_step(self, batch, batch_idx):
-        pred_label, label = self.batch_one_step(batch)
         train_loss = self.loss_func(pred_label, label)
         metrics = {"train_loss": float(train_loss.to("cpu"))}
         self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
         return train_loss
 
     def validation_step(self, batch, batch_idx):
-        # ----- Teacher Forcing Mode -----
-        # Use the forward() pass to get the logits and compute the cross-entropy loss.
-        pred_label, label = self.batch_one_step(batch)
-        # Adjust labels if needed, for example, ignoring the BOS token
-        teacher_forcing_loss = self.loss_func(pred_label, label)
-        customized_metric = TrajectoryGeneratorMetric(self.cfg)
-        teacher_forcing_dis = customized_metric.calculate_distance(pred_label, batch)
+        val_loss_dict = {}
+        pred_logits, _, _ = self.gen_model(batch)
+        # Adjust labels if needed, for example, ignoring the BOS token if configured
+        if self.cfg.ignore_bos_loss:
+            label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
+            pred_logits = pred_logits[:, 1:]
+            bz, t, vocab = pred_logits.shape
+            pred_logits = pred_logits.reshape([bz * t, vocab])
+            teacher_forcing_loss = self.loss_func(pred_logits, label)
+        else:
+            label = batch['labels'].reshape(-1).to(self.cfg.device)
+            bz, t, vocab = pred_logits.shape
+            pred_logits = pred_logits.reshape([bz * t, vocab])
+            teacher_forcing_loss = self.loss_func(pred_logits, label)
+        if self.cfg.customized_metric:
+            customized_metric = TrajectoryGeneratorMetric(self.cfg)
+            dis = customized_metric.calculate_distance(pred_logits, batch)
+            if dis.get("L2_distance", None) is not None:
+                val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
 
         # ----- Autoregressive (Predict) Mode -----
         # Use the predict() method to perform autoregressive generation.
@@ -76,14 +83,13 @@ class TrajectoryTrainingModule(pl.LightningModule):
         # Replace with a more task-specific metric if needed.
         val_prediction_accuracy = torch.Tensor(predicted_tokens == true_tokens).to(torch.float32).mean()
 
-        # ----- Log both metrics -----
         metrics = {
-            "val_teacher_forcing_loss": float(teacher_forcing_loss.to("cpu")),
-            "val_teacher_forcing_L2_dis": teacher_forcing_dis["L2_distance"],
-            "val_prediction_accuracy": float(val_prediction_accuracy.to("cpu"))
+            "val_loss": float(teacher_forcing_loss.to("cpu")),
+            "val_accuracy": float(val_prediction_accuracy.to("cpu"))
         }
-        self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
-        return metrics
+        val_loss_dict.update(metrics)
+        self.log_dict(val_loss_dict, on_epoch=True, prog_bar=True, logger=True)
+        return val_loss_dict
 
     def configure_optimizers(self):
         optimizer = torch.optim.RMSprop(self.parameters(),

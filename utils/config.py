@@ -78,11 +78,6 @@ class Configuration:
 class InferenceConfiguration:
     model_ckpt_path: str
     training_config: str
-    predict_mode: str
-
-    trajectory_pub_frequency: int
-    cam_info_dir: str
-    progress_threshold: float
 
     train_meta_config: Configuration = None
 
