@@ -65,14 +65,10 @@ class TrajectoryTrainingModule(pl.LightningModule):
             pred_logits = pred.reshape([bz * t, vocab])
             teacher_forcing_loss = self.loss_func(pred_logits, label)
         if self.cfg.customized_metric:
-            # todo: debug here
-            try:
-                customized_metric = TrajectoryGeneratorMetric(self.cfg)
-                dis = customized_metric.calculate_distance(pred.reshape([bz, t, vocab]), batch)
-                if dis.get("L2_distance", None) is not None:
-                    val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
-            except:
-                pass
+            customized_metric = TrajectoryGeneratorMetric(self.cfg)
+            dis = customized_metric.calculate_distance(pred.reshape([bz, t+1, vocab]), batch)
+            if dis.get("L2_distance", None) is not None:
+                val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
 
         # ----- Autoregressive (Predict) Mode -----
         # Use the predict() method to perform autoregressive generation.
