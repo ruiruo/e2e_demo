@@ -39,19 +39,18 @@ log_root_dir: '/home/shaoqian.li/log/'
 checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
 log_every_n_steps: 200
 check_val_every_n_epoch: 1
-epochs: 200
-learning_rate: 0.00002
-weight_decay: 0.0002
+epochs: 2000
+learning_rate: 0.0001
+weight_decay: 0.00002
 batch_size: 512
 num_workers: 15
 max_agent: 5
 ignore_eos_loss: True
 device: "cuda"
 customized_metric: True
-ar_start_epoch: 1
-ar_warmup_epochs: 5
+ar_start_epoch: 10
+ar_warmup_epochs: 50
 max_grad_norm: 2.0
-# resume_path: ""
 
 ##################### Data Process #####################
 tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
