@@ -140,8 +140,7 @@ class TrajectoryGenerator(nn.Module):
         ).bool()
         return mask
 
-    def decoder(self, tgt_emb, memory, tgt_mask=None, memory_mask=None,
-                tgt_key_padding_mask=None, memory_key_padding_mask=None):
+    def decoder(self, tgt_emb, memory, tgt_mask=None):
         """
         Transformer decoder forward pass:
           1) self-attention on tgt_emb
@@ -188,7 +187,7 @@ class TrajectoryGenerator(nn.Module):
 
     def predict(self, data, predict_token_num=10, with_logits=False):
         """
-        Autoregressively generate tokens for 'predict_token_num' steps,
+        Autoregressive generate tokens for 'predict_token_num' steps,
         BUT ALSO store the per-step logits (before argmax).
 
         Returns:
