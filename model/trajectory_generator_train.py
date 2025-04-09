@@ -17,7 +17,6 @@ class TrajectoryTrainingModule(pl.LightningModule):
 
         self.gen_model = TrajectoryGenerator(self.cfg)
 
-        # Initialize model weights
         self.init_model_weights()
 
     def init_model_weights(self):
@@ -38,14 +37,25 @@ class TrajectoryTrainingModule(pl.LightningModule):
         if self.cfg.ignore_bos_loss:
             label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
             pred_label = pred_label[:, 1:]
-            bz, t, vocab = pred_label.shape
-            pred_label = pred_label.reshape([bz * t, vocab])
         else:
             label = batch['labels'].reshape(-1).to(self.cfg.device)
-            bz, t, vocab = pred_label.shape
-            pred_label = pred_label.reshape([bz * t, vocab])
+
+        bz, t, vocab = pred_label.shape
+        pred_label = pred_label.reshape([bz * t, vocab])
         train_loss = self.loss_func(pred_label, label)
-        metrics = {"train_loss": float(train_loss.to("cpu"))}
+
+        # Autoregressive scheduled sampling
+        # if self.current_epoch > self.cfg.ar_start_epoch:
+        #     pred_tokens = self.gen_model.predict(batch, predict_token_num=self.cfg.max_frame)
+        #     true_tokens = batch['labels'][:, 1:1 + pred_tokens.size(1)].to(self.cfg.device)
+        #     autoregressive_loss = self.loss_func(
+        #         pred_tokens.reshape(-1, 1).float(),
+        #         true_tokens.reshape(-1)
+        #     )
+        #     alpha = min(1.0, (self.current_epoch - self.cfg.ar_start_epoch) / self.cfg.ar_warmup_epochs)
+        #     train_loss = (1 - alpha) * train_loss + alpha * autoregressive_loss
+        #
+        metrics = {"train_loss": float(train_loss.cpu())}
         self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
         return train_loss
 
@@ -56,17 +66,17 @@ class TrajectoryTrainingModule(pl.LightningModule):
         if self.cfg.ignore_bos_loss:
             label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
             pred_logits = pred[:, 1:]
-            bz, t, vocab = pred_logits.shape
-            pred_logits = pred_logits.reshape([bz * t, vocab])
-            teacher_forcing_loss = self.loss_func(pred_logits, label)
         else:
             label = batch['labels'].reshape(-1).to(self.cfg.device)
-            bz, t, vocab = pred.shape
-            pred_logits = pred.reshape([bz * t, vocab])
-            teacher_forcing_loss = self.loss_func(pred_logits, label)
+            pred_logits = pred
+
+        bz, t, vocab = pred_logits.shape
+        pred_logits = pred_logits.reshape([bz * t, vocab])
+        teacher_forcing_loss = self.loss_func(pred_logits, label)
+
         if self.cfg.customized_metric:
             customized_metric = TrajectoryGeneratorMetric(self.cfg)
-            dis = customized_metric.calculate_distance(pred.reshape([bz, t+1, vocab]), batch)
+            dis = customized_metric.calculate_distance(pred.reshape([bz, t + 1, vocab]), batch)
             if dis.get("L2_distance", None) is not None:
                 val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
 
@@ -92,8 +102,16 @@ class TrajectoryTrainingModule(pl.LightningModule):
         return val_loss_dict
 
     def configure_optimizers(self):
-        optimizer = torch.optim.RMSprop(self.parameters(),
-                                        lr=self.cfg.learning_rate,
-                                        weight_decay=self.cfg.weight_decay)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=self.cfg.epochs)
+        optimizer = torch.optim.RMSprop(
+            self.parameters(),
+            lr=self.cfg.learning_rate,
+            weight_decay=self.cfg.weight_decay
+        )
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer=optimizer,
+            T_max=self.cfg.epochs
+        )
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler}
+
+    def on_before_zero_grad(self, optimizer):
+        torch.nn.utils.clip_grad_norm_(self.parameters(), self.cfg.max_grad_norm)

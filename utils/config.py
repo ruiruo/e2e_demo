@@ -47,6 +47,9 @@ class Configuration:
     batch_size: int
     num_workers: int
     customized_metric: bool
+    ar_start_epoch: int
+    ar_warmup_epochs: int
+    max_grad_norm: float
     # Model Options
     dropout: float
     # Encoder Options

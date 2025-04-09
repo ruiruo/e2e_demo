@@ -44,6 +44,10 @@ class TrajectoryGenerator(nn.Module):
             self.cfg.token_nums
         )
 
+        self.input_norm = nn.LayerNorm(self.cfg.embedding_dim)
+        self.memory_norm = nn.LayerNorm(self.cfg.embedding_dim)
+        self.output_norm = nn.LayerNorm(self.cfg.embedding_dim)
+
     # Encoder parts
     def encoder(self, data):
         """
@@ -81,7 +85,7 @@ class TrajectoryGenerator(nn.Module):
 
         # reshape back to (B, L, embed)
         self_state = self_state_flat.view(b, l, -1)
-        return self_state
+        return self.input_norm(self_state)
 
     def encode_agent_topology(self, data):
         """
@@ -97,18 +101,18 @@ class TrajectoryGenerator(nn.Module):
         3) The goal token is embedded and treated as an extra agent in the topology.
         4) Output shape: (B, T, S+1, embed)
         """
-        bz, timer, num_agent, c = data['agent_info'].shape
+        bz, timer, num_agent, _ = data['agent_info'].shape
 
         # agent_token: (B, T, S)
-        agent_token = data['agent_info'][:, :, :, 0]  # tokens
-        agent_mask = (agent_token != -1)  # True => valid
+        agent_token = data['agent_info'][:, :, :, 0]
+        agent_mask = (agent_token != -1)
         agent_token = agent_token.clone()
-        agent_token[~agent_mask] = self.cfg.pad_token  # fill pad_token for invalid
+        agent_token[~agent_mask] = self.cfg.pad_token
 
         # Flatten for embedding: (B*T*S,)
         agent_token = agent_token.view(-1).long().to(self.cfg.device, non_blocking=True)
-        agent_embedding = self.token_embedding(agent_token)  # (B*T*S, embed)
-        agent_embedding = agent_embedding.view(bz, timer, num_agent, -1)  # (B, T, S, embed)
+        agent_embedding = self.token_embedding(agent_token)
+        agent_embedding = agent_embedding.view(bz, timer, num_agent, -1)
 
         # agent_features: (B, T, S, c-1)
         agent_features = data['agent_info'][:, :, :, 1:6].to(self.cfg.device, non_blocking=True)
@@ -123,7 +127,7 @@ class TrajectoryGenerator(nn.Module):
             goal_emb=goal_embedding,
             agent_mask=agent_mask
         )
-        return background_state
+        return self.memory_norm(background_state)
 
     # Decoder parts
     def create_mask(self, seq_len):
@@ -132,8 +136,7 @@ class TrajectoryGenerator(nn.Module):
         Upper-triangular entries are True => future positions are masked.
         """
         mask = torch.triu(
-            torch.ones(seq_len, seq_len, device=self.cfg.device),
-            diagonal=1
+            torch.ones(seq_len, seq_len, device=self.cfg.device), diagonal=1
         ).bool()
         return mask
 
@@ -152,7 +155,8 @@ class TrajectoryGenerator(nn.Module):
         )
         # => (tgt seq len, batch size, embed)
         # Project to vocabulary space
-        pred_traj_points = self.output_projection(dec_out)  # (tgt seq len, batch size, vocab size)
+        dec_out = self.output_norm(dec_out)
+        pred_traj_points = self.output_projection(dec_out)
         return pred_traj_points
 
     def forward(self, data):
