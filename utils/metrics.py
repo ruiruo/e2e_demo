@@ -11,19 +11,15 @@ class TrajectoryGeneratorMetric:
         with open(self.cfg.detokenizer, "r") as f:
             self.detokenizer = json.load(f)
 
-    def calculate_distance(self, pred_traj_waypoints, batch):
+    def calculate_distance(self, pred_traj_waypoints, true_traj_waypoints):
         distance_dict = {}
-        bz, length = batch["labels"].shape
-        if self.cfg.ignore_bos_loss:
-            length -= 1
-            pred_traj_waypoints = pred_traj_waypoints[:, 1:, :]
-        prediction_waypoints = self.get_hp_predict_waypoints(pred_traj_waypoints, bz, length)
-        gt_waypoints = self.get_hp_waypoints(batch['labels'])
+        _prediction_waypoints = self.get_hp_predict_waypoints(pred_traj_waypoints)
+        _gt_waypoints = self.get_hp_waypoints(true_traj_waypoints)
         gt_prediction_waypoints_np = []
         gt_waypoints_np = []
         for index in range(self.cfg.batch_size):
-            gt_prediction_waypoints_np.append(self.get_valid_np_waypoints(prediction_waypoints[index]))
-            gt_waypoints_np.append(self.get_valid_np_waypoints(gt_waypoints[index]))
+            gt_prediction_waypoints_np.append(self.get_valid_np_waypoints(_prediction_waypoints[index]))
+            gt_waypoints_np.append(self.get_valid_np_waypoints(_gt_waypoints[index]))
         l2_list, haus_list, fourier_difference = [], [], []
         for index in range(self.cfg.batch_size):
             distance_obj = TrajectoryDistance(gt_prediction_waypoints_np[index], gt_waypoints_np[index])
@@ -31,9 +27,9 @@ class TrajectoryGeneratorMetric:
                 # If you need at least two points to compute meaningful distances, skip
                 continue
             l2_list.append(distance_obj.get_l2_distance())
-            # if distance_obj.get_len() > 1:
-            #     haus_list.append(distance_obj.get_haus_distance())
-            #     fourier_difference.append(distance_obj.get_fourier_difference())
+            if distance_obj.get_len() > 1:
+                haus_list.append(distance_obj.get_haus_distance())
+                fourier_difference.append(distance_obj.get_fourier_difference())
         if len(l2_list) > 0:
             distance_dict.update({"L2_distance": float(np.mean(l2_list))})
         if len(haus_list) > 0:
@@ -49,9 +45,10 @@ class TrajectoryGeneratorMetric:
                                                                self.cfg.pad_token)
         return np_waypoints_valid_detoken
 
-    def get_hp_predict_waypoints(self, pred_traj_waypoint, bz, length):
-        waypoints = torch.argmax(pred_traj_waypoint, dim=-1).reshape([bz, length])
+    def get_hp_predict_waypoints(self, pred_traj_waypoint):
+        waypoints = torch.argmax(pred_traj_waypoint, dim=-1)
         return self.get_hp_waypoints(waypoints)
 
-    def get_hp_waypoints(self, batch_waypoints):
-        return batch_waypoints[:, 1:1 + self.cfg.item_number]
+    @staticmethod
+    def get_hp_waypoints(batch_waypoints):
+        return batch_waypoints[:, 1:-1]

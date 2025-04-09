@@ -186,19 +186,16 @@ class TrajectoryGenerator(nn.Module):
         pred_logits = pred_logits.transpose(0, 1)
         return pred_logits, self_state, env_state
 
-    def predict(self, data, predict_token_num=10):
+    def predict(self, data, predict_token_num=10, with_logits=False):
         """
-        Autoregressive generation loop with the velocity embedding always at position 0.
+        Autoregressively generate tokens for 'predict_token_num' steps,
+        BUT ALSO store the per-step logits (before argmax).
 
-        Assumptions:
-          - self_state has shape (B, 2, D) after encoding:
-             * self_state[:, 0, :] => velocity embedding
-             * self_state[:, 1, :] => some 'initial' token or other state
-          - We'll generate 'predict_token_num' new tokens,
-            each appended after the initial token(s).
+        Returns:
+            generated_tokens: (B, predict_token_num) discrete tokens (argmax)
+            all_step_logits:  (B, predict_token_num, vocab_size) raw logits at each step
         """
         bz, length = data["input_ids"].shape
-        # Suppose data["input_ids"] has length=2 => [BOS, something], or you just rely on self_state
 
         # 1) Encode to get self_state, env_state
         self_state, env_state = self.encoder(data)
@@ -208,15 +205,17 @@ class TrajectoryGenerator(nn.Module):
 
         # (B,0) => empty
         generated_tokens = torch.empty((bz, 0), dtype=torch.long, device=self.cfg.device)
+        all_step_logits = torch.zeros(
+            (bz, predict_token_num, self.cfg.token_nums), device=self.cfg.device
+        )
 
-        # 3) Build the partial embedding:
+        # 3) Loop for each decoding step
         for step_i in range(predict_token_num):
-            #    [ start_emb ] + embeddings of all previously generated tokens
-            # a) embed the previously generated tokens => (B, #sofar, D)
+            # a) Build partial_emb = [start_emb] + embeddings of previously generated tokens
             if generated_tokens.size(1) > 0:
-                token_emb = self.token_embedding(generated_tokens)  # => (B, #sofar, D)
+                prev_token_emb = self.token_embedding(generated_tokens)
                 # cat along seq_len => (B, 1 + #sofar, D)
-                partial_emb = torch.cat([start_emb, token_emb], dim=1)
+                partial_emb = torch.cat([start_emb, prev_token_emb], dim=1)
             else:
                 # if no tokens generated yet, partial_emb = velocity alone
                 partial_emb = start_emb
@@ -224,31 +223,39 @@ class TrajectoryGenerator(nn.Module):
             # b) transpose => (seq_len, B, D)
             partial_emb_tbd = partial_emb.transpose(0, 1)  # shape => (#seq, B, D)
 
-            # 4) gather environment window => shape (3*A, B, D) or single slice, etc.
+            # c) Get environment "memory" (3 frames around t = step_i)
             mem = self.get_env_window_around_t(env_state, step_i)
 
-            # 5) causal mask => (#seq, #seq)
+            # d) Causal mask
             causal_mask = self.create_mask(partial_emb_tbd.size(0))
 
+            # e) Decode
             dec_out = self.trajectory_gen(
                 tgt=partial_emb_tbd,
                 memory=mem,
                 tgt_mask=causal_mask
             )
 
-            # 7) project => (#seq, B, vocab size)
+            # f) Project to vocab => (seq_len, B, vocab)
             logits = self.output_projection(dec_out)
 
-            # 8) take the last position => (B, vocab size)
+            # g) take the last position => (B, vocab size)
             next_token_logits = logits[-1, :, :]
 
-            # 9) greedy => (B,1)
+            # h) Greedy argmax => (B, 1)
             next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
 
-            # 10) append => (B, step_i+1)
+            # i) Append to outputs
             generated_tokens = torch.cat([generated_tokens, next_token], dim=1)
+            all_step_logits[:, step_i, :] = next_token_logits
 
-        return generated_tokens
+        # shape:
+        #   generated_tokens => (B, predict_token_num)
+        #   all_step_logits  => (B, predict_token_num, vocab)
+        if with_logits:
+            return generated_tokens, all_step_logits
+        else:
+            return generated_tokens
 
     @staticmethod
     def get_env_window_around_t(rep_env, t):

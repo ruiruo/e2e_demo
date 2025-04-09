@@ -33,62 +33,72 @@ class TrajectoryTrainingModule(pl.LightningModule):
         self.gen_model.apply(init_func)
 
     def training_step(self, batch, batch_idx):
-        pred_label, _, _ = self.gen_model(batch)
-        if self.cfg.ignore_bos_loss:
-            label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
-            pred_label = pred_label[:, 1:]
+        # 1) Teacher-forcing loss (the usual teacher-forcing forward)
+
+        pred_logits, _, _ = self.gen_model(batch)
+        if self.cfg.ignore_eos_loss:
+            label = batch['labels'][:, :-1]
+            pred_logits = pred_logits[:, :-1]
         else:
-            label = batch['labels'].reshape(-1).to(self.cfg.device)
+            label = batch['labels']
 
-        bz, t, vocab = pred_label.shape
-        pred_label = pred_label.reshape([bz * t, vocab])
-        train_loss = self.loss_func(pred_label, label)
+        bz, t, vocab = pred_logits.shape
+        pred_logits = pred_logits.reshape([bz * t, vocab])
+        label = label.reshape(-1).to(self.cfg.device)
+        train_loss = self.loss_func(pred_logits, label)
+        # 2) Scheduled sampling / AR loss
+        if self.current_epoch > self.cfg.ar_start_epoch:
+            # Autoregressive scheduled sampling
+            if self.cfg.ignore_eos_loss:
+                true_tokens = batch['labels'][:, :-1].to(self.cfg.device)
+            else:
+                true_tokens = batch['labels'].to(self.cfg.device)
+            pred_logits_ar = self.gen_model.predict(batch,
+                                                    predict_token_num=true_tokens.shape[-1], with_logits=True)[1]
+            bz, t, vocab = pred_logits_ar.shape
+            autoregressive_loss = self.loss_func(pred_logits_ar.reshape([bz * t, vocab]).float(),
+                                                 true_tokens.reshape(-1))
+            alpha = min(1.0, (self.current_epoch - self.cfg.ar_start_epoch) / self.cfg.ar_warmup_epochs)
+            train_loss = (1 - alpha) * train_loss + alpha * autoregressive_loss
 
-        # Autoregressive scheduled sampling
-        # if self.current_epoch > self.cfg.ar_start_epoch:
-        #     pred_tokens = self.gen_model.predict(batch, predict_token_num=self.cfg.max_frame)
-        #     true_tokens = batch['labels'][:, 1:1 + pred_tokens.size(1)].to(self.cfg.device)
-        #     autoregressive_loss = self.loss_func(
-        #         pred_tokens.reshape(-1, 1).float(),
-        #         true_tokens.reshape(-1)
-        #     )
-        #     alpha = min(1.0, (self.current_epoch - self.cfg.ar_start_epoch) / self.cfg.ar_warmup_epochs)
-        #     train_loss = (1 - alpha) * train_loss + alpha * autoregressive_loss
-        #
         metrics = {"train_loss": float(train_loss.cpu())}
         self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
         return train_loss
 
     def validation_step(self, batch, batch_idx):
         val_loss_dict = {}
-        pred, _, _ = self.gen_model(batch)
-        # Adjust labels if needed, for example, ignoring the BOS token if configured
-        if self.cfg.ignore_bos_loss:
-            label = batch['labels'][:, 1:].reshape(-1).to(self.cfg.device)
-            pred_logits = pred[:, 1:]
+        pred_logits, _, _ = self.gen_model(batch)
+        if self.cfg.ignore_eos_loss:
+            label = batch['labels'][:, :-1]
+            pred_logits = pred_logits[:, :-1]
         else:
-            label = batch['labels'].reshape(-1).to(self.cfg.device)
-            pred_logits = pred
+            label = batch['labels']
 
         bz, t, vocab = pred_logits.shape
         pred_logits = pred_logits.reshape([bz * t, vocab])
+        label = label.reshape(-1).to(self.cfg.device)
         teacher_forcing_loss = self.loss_func(pred_logits, label)
 
         if self.cfg.customized_metric:
             customized_metric = TrajectoryGeneratorMetric(self.cfg)
-            dis = customized_metric.calculate_distance(pred.reshape([bz, t + 1, vocab]), batch)
+            pred_logits = pred_logits.reshape([bz, t, vocab])
+            true_tokens = label.reshape([bz, t])
+            dis = customized_metric.calculate_distance(pred_logits, true_tokens)
             if dis.get("L2_distance", None) is not None:
                 val_loss_dict.update({"val_L2_dis": dis.get("L2_distance")})
+            if dis.get("hausdorff_distance", None) is not None:
+                val_loss_dict.update({"val_hausdorff_dis": dis.get("hausdorff_distance")})
+            if dis.get("fourier_difference", None) is not None:
+                val_loss_dict.update({"val_fourier_diff": dis.get("fourier_difference")})
 
         # ----- Autoregressive (Predict) Mode -----
         # Use the predict() method to perform autoregressive generation.
         # 'predict_token_num' should be set according to your generation length requirement.
-        predicted_tokens = self.gen_model.predict(batch, predict_token_num=self.cfg.max_frame)
-
-        # For demonstration, we assume the ground truth tokens to compare against are the labels,
-        # skipping the BOS token if needed. Adjust the slicing as appropriate.
-        true_tokens = batch['labels'][:, 1:1 + predicted_tokens.size(1)].to(self.cfg.device)
-
+        if self.cfg.ignore_eos_loss:
+            true_tokens = batch['labels'][:, :-1].to(self.cfg.device)
+        else:
+            true_tokens = batch['labels'].to(self.cfg.device)
+        predicted_tokens = self.gen_model.predict(batch, predict_token_num=true_tokens.shape[1])
         # Compute a simple accuracy metric between the generated tokens and the ground truth tokens.
         # Replace with a more task-specific metric if needed.
         val_prediction_accuracy = torch.Tensor(predicted_tokens == true_tokens).to(torch.float32).mean()

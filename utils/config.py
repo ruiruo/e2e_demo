@@ -74,7 +74,7 @@ class Configuration:
     log_dir: str = None
     checkpoint_dir: str = None
     is_train: bool = True
-    ignore_bos_loss: bool = True
+    ignore_eos_loss: bool = True
 
 
 @dataclass
