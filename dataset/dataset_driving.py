@@ -1,11 +1,49 @@
 from utils.config import Configuration
 from utils.trajectory_utils import TrajectoryInfoParser
 from utils.trajectory_utils import parallel_find_bin, create_sample, detokenize_traj_waypoints
+import multiprocessing as mp
 import numpy as np
 import os
 import torch
 import tqdm
 import json
+
+
+def process_task(args):
+    task_index, task_path, cfg, BOS_token, EOS_token, PAD_token, x_boundaries, y_boundaries, local2token, detokenizer = args
+    trajectories_list = []
+    trajectories_gt_list = []
+    trajectories_goals_list = []
+    trajectories_agent_info_list = []
+    ego_info_list = []
+    try:
+        traje_info_obj = TrajectoryInfoParser(task_index, task_path, cfg)
+    except Exception as e:
+        # Log exception or ignore this task
+        return trajectories_list, trajectories_gt_list, trajectories_goals_list, trajectories_agent_info_list, ego_info_list
+
+    for trajectory in traje_info_obj.trajectories:
+        if cfg.multi_agent_info:
+            # Handle multi-agent if implemented, or skip with a log
+            raise NotImplementedError
+        else:
+            input_ids, labels, agent_info = create_sample(
+                trajectory.info["ego_info"][:, 0],
+                trajectory.info["agent_info"],
+                BOS_token, EOS_token, PAD_token,
+                cfg.max_frame
+            )
+            goal_info = parallel_find_bin(
+                np.expand_dims(trajectory.info["goal_info"], 0),
+                x_boundaries, y_boundaries
+            )
+            goal_info = (int(goal_info[0]), int(goal_info[1]))
+            trajectories_list.append(input_ids)
+            trajectories_gt_list.append(labels)
+            trajectories_goals_list.append(np.array([local2token[goal_info]]))
+            trajectories_agent_info_list.append(agent_info)
+            ego_info_list.append(trajectory.info["ego_info"][0, 1:])
+    return trajectories_list, trajectories_gt_list, trajectories_goals_list, trajectories_agent_info_list, ego_info_list
 
 
 class TrajectoryDataModule(torch.utils.data.Dataset):
@@ -61,36 +99,26 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         }
 
     def create_gt_data(self):
-        all_tasks = self._get_all_tasks()
-        id_s, id_e = 0, 0
-        for task_index, task_path in tqdm.tqdm(enumerate(all_tasks)):
-            # task iteration
-            # todo, could be mutil process
-            try:
-                traje_info_obj = TrajectoryInfoParser(task_index, task_path, self.cfg)
-            except:
-                continue
-            for traje_id, trajectory in enumerate(traje_info_obj.trajectories):
-                if self.cfg.multi_agent_info:
-                    # TODO: generate (n-1) * trajectories by multi agent info
-                    raise NotImplementedError
-                else:
-                    input_ids, labels, agent_info = create_sample(trajectory.info["ego_info"][:, 0]
-                                                                  , trajectory.info["agent_info"],
-                                                                  self.BOS_token, self.EOS_token,
-                                                                  self.PAD_token, self.cfg.max_frame)
-                    goal_info = parallel_find_bin(np.expand_dims(trajectory.info["goal_info"], 0),
-                                                  self.x_boundaries, self.y_boundaries)
-                    goal_info = (int(goal_info[0]), int(goal_info[1]))
-                    self.ego_info.append(trajectory.info["ego_info"][0, 1:])
-                    self.goal_info.append(trajectory.info["ego_info"][-1, 1:])
-                    self.trajectories.append(input_ids)
-                    self.trajectories_gt.append(labels)
-                    self.trajectories_goals.append(np.array([self.local2token[goal_info]]))
-                    self.trajectories_agent_info.append(agent_info)
-                id_e += 1
-            self.task_index_list[task_index] = [id_s, id_e]
-            id_s, id_e = id_e, id_e
+        all_tasks = self._get_all_tasks()  # list of task paths
+        # Build a list of arguments for each task
+        args_list = [
+            (task_index, task_path, self.cfg, self.BOS_token, self.EOS_token, self.PAD_token,
+             self.x_boundaries, self.y_boundaries, self.local2token, self.detokenizer)
+            for task_index, task_path in enumerate(all_tasks)
+        ]
+        # Create a process pool
+        with mp.Pool(processes=self.cfg.num_workers) as pool:
+            # Use imap_unordered for possibly faster results and integration with tqdm
+            results = list(tqdm.tqdm(pool.imap(process_task, args_list), total=len(args_list)))
+
+        for res in results:
+            traj, traj_gt, traj_goal, traj_agent, ego = res
+            self.trajectories.extend(traj)
+            self.trajectories_gt.extend(traj_gt)
+            self.trajectories_goals.extend(traj_goal)
+            self.trajectories_agent_info.extend(traj_agent)
+            self.ego_info.extend(ego)
+        # Optionally, rebuild task_index_list if needed.
         self.format_transform()
 
     def _get_all_tasks(self):
@@ -216,13 +244,7 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
                 - valid_tokens_count_min: Minimum valid tokens count in a trajectory.
                 - valid_tokens_count_max: Maximum valid tokens count in a trajectory.
         """
-        stats = {}
-        stats["total_samples"] = len(self.trajectories)
-        stats["trajectories_shape"] = self.trajectories.shape
-        stats["labels_shape"] = self.trajectories_gt.shape
-        stats["goals_shape"] = self.trajectories_goals.shape
-        stats["agent_info_shape"] = self.trajectories_agent_info.shape
-        stats["ego_info_shape"] = self.ego_info.shape
+        stats = {"total_samples": len(self.trajectories)}
 
         # Goal distance statistics.
         goal_distances = []

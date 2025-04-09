@@ -20,7 +20,7 @@ data = TrajectoryDataloaderModule(cfg=config_obj)
 
 run_name = (
     f"Emb={config_obj.embedding_dim}, Dim={config_obj.tf_de_dim}, "
-    f"Head={config_obj.tf_de_heads}, Layer={config_obj.tf_de_layers})"
+    f"Head={config_obj.tf_de_heads}, Layer={config_obj.tf_de_layers}"
 )
 
 mlflow_logger = MLFlowLogger(
