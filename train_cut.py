@@ -2,7 +2,6 @@ from pytorch_lightning.loggers import MLFlowLogger
 from pytorch_lightning import Trainer, seed_everything
 from utils.config import get_train_config_obj
 from utils.common import setup_callbacks
-from utils.logger_utils import PrintLogger
 from dataset.dataloader import TrajectoryDataloaderModule
 from model.trajectory_generator_train import TrajectoryTrainingModule
 
@@ -28,8 +27,6 @@ mlflow_logger = MLFlowLogger(
     run_name=run_name,
     tracking_uri="http://172.21.191.16:9999"
 )
-
-# print_logger = PrintLogger()
 
 trainer = Trainer(
     callbacks=setup_callbacks(config_obj, "val_accuracy", "max"),

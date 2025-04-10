@@ -37,7 +37,7 @@ num_gpus: 1
 cuda_device_index: "0"
 log_root_dir: '/home/shaoqian.li/log/'
 checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
-log_every_n_steps: 1000
+log_every_n_steps: 200
 check_val_every_n_epoch: 1
 epochs: 500
 learning_rate: 0.00005
@@ -48,8 +48,8 @@ max_agent: 5
 ignore_eos_loss: True
 device: "cuda"
 customized_metric: True
-ar_start_epoch: 20
-ar_warmup_epochs: 500
+ar_start_epoch: 10
+ar_warmup_epochs: 100
 max_grad_norm: 2.0
 
 ##################### Data Process #####################

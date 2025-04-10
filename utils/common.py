@@ -21,13 +21,15 @@ def decorator_function(train_function):
 
 
 def setup_callbacks(cfg_obj, monitor, mode):
-    ckpt_callback = ModelCheckpoint(dirpath=cfg_obj.checkpoint_dir,
-                                    monitor='monitor',
-                                    save_top_k=100,
-                                    mode=mode,
-                                    every_n_epochs=20,
-                                    filename='{epoch:02d}-{%s:.2f}' %monitor,
-                                    save_last=True)
+    ckpt_callback = ModelCheckpoint(
+        dirpath=cfg_obj.checkpoint_dir,
+        monitor=monitor,
+        save_top_k=100,
+        mode=mode,
+        every_n_epochs=20,
+        filename="{epoch:02d}-{%s:.2f}" % monitor,
+        save_last=True
+    )
     progress_bar = TQDMProgressBar()
     model_summary = ModelSummary(max_depth=2)
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
