@@ -5,7 +5,7 @@ from utils.common import setup_callbacks
 from dataset.dataloader import TrajectoryDataloaderModule
 from model.trajectory_generator_train import TrajectoryTrainingModule
 
-cfg_path = "./configs/training_chester.yaml"
+cfg_path = "./configs/training.yaml"
 seed_everything(15)
 config_obj = get_train_config_obj(config_path=cfg_path)
 
