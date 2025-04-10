@@ -18,7 +18,6 @@ class PrintLogger(Logger):
         print(params)
 
     def log_metrics(self, metrics, step):
-        print(f"Step {step}:")
         print(metrics)
 
     def experiment(self):

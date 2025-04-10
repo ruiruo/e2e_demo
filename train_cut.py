@@ -29,11 +29,11 @@ mlflow_logger = MLFlowLogger(
     tracking_uri="http://172.21.191.16:9999"
 )
 
-print_logger = PrintLogger()
+# print_logger = PrintLogger()
 
 trainer = Trainer(
-    callbacks=setup_callbacks(config_obj),
-    logger=[mlflow_logger, print_logger],
+    callbacks=setup_callbacks(config_obj, "val_accuracy", "max"),
+    logger=[mlflow_logger],
     accelerator="gpu",
     # strategy='ddp_find_unused_parameters_true',
     devices=config_obj.num_gpus,
