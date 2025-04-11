@@ -3,11 +3,13 @@ from utils.config import get_inference_config_obj
 from dataset.dataloader import DataLoader, TrajectoryDataModule
 from model.trajectory_generator_predict import TrajectoryPredictModule
 from utils.display import plot_and_save_trajectories
+
 seed_everything(15)
 pred_config_obj = get_inference_config_obj("./configs/predict.yaml")
 train_config_obj = pred_config_obj.train_meta_config
 train_config_obj.log_every_n_steps = 2
 train_config_obj.max_train = 10
+train_config_obj.max_val = 5
 train_config_obj.data_dir = "/home/nio/data/"
 train_config_obj.log_dir = train_config_obj.log_dir.replace("shaoqian.li", "nio")
 train_config_obj.checkpoint_dir = train_config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
@@ -29,6 +31,12 @@ data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj, is_train
                   pin_memory=True,
                   drop_last=True)
 
+print(len(data))
+
 # Run prediction using the Lightning Trainer
 pred_traj, label_traj, agents_traj = inference_obj.test_teacher_forcing(data)
-plot_and_save_trajectories(pred_traj, label_traj, agents_traj, "./test_teacher_forcing_figures/")
+plot_and_save_trajectories(pred_traj, label_traj, agents_traj,
+                           "./test_teacher_forcing_figures/%s_teach/" % pred_config_obj.model_ckpt_path.split("/")[-1])
+pred_traj, label_traj, agents_traj = inference_obj.test(data)
+plot_and_save_trajectories(pred_traj, label_traj, agents_traj,
+                           "./test_teacher_forcing_figures/%s_auto_reg/" % pred_config_obj.model_ckpt_path.split("/")[-1])
