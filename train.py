@@ -4,40 +4,53 @@ from utils.config import get_train_config_obj
 from utils.common import setup_callbacks
 from dataset.dataloader import TrajectoryDataloaderModule
 from model.trajectory_generator_train import TrajectoryTrainingModule
+import argparse
 
-cfg_path = "./configs/training.yaml"
-seed_everything(15)
-config_obj = get_train_config_obj(config_path=cfg_path)
 
-model = TrajectoryTrainingModule(config_obj)
+def main(config_obj):
+    seed_everything(42)
 
-print(model.gen_model)
+    model = TrajectoryTrainingModule(config_obj)
 
-data = TrajectoryDataloaderModule(cfg=config_obj)
-# data.setup("train")
-# print(len(data.train_loader), len(data.val_loader))
+    print(model.gen_model)
 
-run_name = (
-    f"Emb={config_obj.embedding_dim}, Dim={config_obj.tf_de_dim}, "
-    f"Head={config_obj.tf_de_heads}, Layer={config_obj.tf_de_layers}"
-)
+    data = TrajectoryDataloaderModule(cfg=config_obj)
 
-mlflow_logger = MLFlowLogger(
-    experiment_name="e2e_planner",
-    run_name=run_name,
-    tracking_uri="http://172.21.191.16:9999"
-)
+    run_name = (
+        f"Emb={config_obj.embedding_dim}, Dim={config_obj.tf_de_dim}, "
+        f"Head={config_obj.tf_de_heads}, Layer={config_obj.tf_de_layers}"
+    )
 
-trainer = Trainer(
-    callbacks=setup_callbacks(config_obj, "val_accuracy", "max"),
-    logger=[mlflow_logger],
-    accelerator="gpu",
-    # strategy='ddp_find_unused_parameters_true',
-    devices=config_obj.num_gpus,
-    max_epochs=config_obj.epochs,
-    log_every_n_steps=config_obj.log_every_n_steps,
-    check_val_every_n_epoch=config_obj.check_val_every_n_epoch,
-    profiler='simple'
-)
+    mlflow_logger = MLFlowLogger(
+        experiment_name="e2e_planner",
+        run_name=run_name,
+        tracking_uri="http://172.21.191.16:9999"
+    )
 
-trainer.fit(model=model, datamodule=data, ckpt_path=config_obj.resume_path)
+    trainer = Trainer(
+        callbacks=setup_callbacks(config_obj, "val_accuracy", "max"),
+        logger=[mlflow_logger],
+        accelerator="gpu",
+        # strategy='ddp_find_unused_parameters_true',
+        devices=config_obj.num_gpus,
+        max_epochs=config_obj.epochs,
+        log_every_n_steps=config_obj.log_every_n_steps,
+        check_val_every_n_epoch=config_obj.check_val_every_n_epoch,
+        profiler='simple'
+    )
+
+    trainer.fit(model=model, datamodule=data, ckpt_path=config_obj.resume_path)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Training script for trajectory generator.")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="./configs/training.yaml",
+        help="Path to the training config file."
+    )
+    args = parser.parse_args()
+    cfg_path = args.config
+    train_config_obj = get_train_config_obj(config_path=cfg_path)
+    main(train_config_obj)
