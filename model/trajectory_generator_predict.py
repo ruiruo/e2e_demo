@@ -56,118 +56,132 @@ class TrajectoryPredictModule(pl.LightningModule):
 
     def test(self, data):
         """
-        Tests the model in free-running (autoregressive) mode. It returns the predicted trajectories,
-        the ground truth trajectories, and the agent trajectories.
+        Autoregressive testing. Returns:
+          - pred_traj:        list of detokenized XY trajectories
+          - label_traj:       list of detokenized XY trajectories
+          - agents_traj:      list of agent trajectories
+          - pred_tokens_all:  list of raw predicted token arrays
+          - label_tokens_all: list of raw ground-truth token arrays
         """
         pred_traj = []
         label_traj = []
         agents_traj = []
-        for each in data:
-            pred = self.inference_batch(each)
-            for batch in pred:
-                pred_after_detokenize = detokenize_traj_waypoints(
-                    batch,
+
+        pred_tokens_all = []
+        label_tokens_all = []
+
+        for batch_dict in data:
+            # 1) Autoregressive token-level inference
+            batch_pred_tokens = self.inference_batch(batch_dict)
+            for single_pred_tokens in batch_pred_tokens:
+                # Save tokens for outside metrics (e.g., token-level accuracy)
+                pred_tokens_all.append(single_pred_tokens)
+
+                # Detokenize for coordinate-based metrics or visualization
+                detokenize_pred = detokenize_traj_waypoints(
+                    single_pred_tokens,
                     self.detokenizer,
                     self.train_cfg.bos_token,
                     self.train_cfg.eos_token,
-                    self.train_cfg.pad_token,
+                    self.train_cfg.pad_token
                 )
-                pred_traj.append(pred_after_detokenize)
-            for batch in each["labels"]:
-                label_after_detokenize = detokenize_traj_waypoints(
-                    batch,
+                pred_traj.append(detokenize_pred)
+
+            # 2) Collect ground-truth token sequences and detokenize
+            for single_label_tokens in batch_dict["labels"]:
+                label_tokens_list = single_label_tokens.tolist()
+                label_tokens_all.append(label_tokens_list)
+
+                detok_label = detokenize_traj_waypoints(
+                    label_tokens_list,
                     self.detokenizer,
                     self.train_cfg.bos_token,
                     self.train_cfg.eos_token,
-                    self.train_cfg.pad_token,
+                    self.train_cfg.pad_token
                 )
-                label_traj.append(label_after_detokenize)
-            for batch in each["agent_info"]:
+                label_traj.append(detok_label)
+
+            # 3) Detokenize agent trajectories
+            for batch_agents in batch_dict["agent_info"]:
                 _agents_traj = []
-                for agent in batch.transpose(1, 0):
-                    agent_traj = agent[:, 0]
-                    agent_traj = detokenize_traj_waypoints(
-                        agent_traj.tolist(),
+                # agent_batch shape: (seq_len, n_agents, features)
+                # We transpose to get (n_agents, seq_len, features)
+                for agent in batch_agents.transpose(1, 0):
+                    agent_tokens = agent[:, 0]
+                    agent_detok = detokenize_traj_waypoints(
+                        agent_tokens.tolist(),
                         self.detokenizer,
                         self.train_cfg.bos_token,
                         self.train_cfg.eos_token,
-                        self.train_cfg.pad_token,
+                        self.train_cfg.pad_token
                     )
-                    _agents_traj.append(agent_traj[1:])
-                _agents_traj = np.array(_agents_traj)
-                agents_traj.append(_agents_traj)
-        # pred_traj -> list of predicted trajectories [T, 2]
-        # label_traj -> list of true trajectories [T, 2]
-        # agents_traj -> list of agents trajectories in the map [n, T, 2]
-        return pred_traj, label_traj, agents_traj
+                    _agents_traj.append(agent_detok[1:])
+                agents_traj.append(np.array(_agents_traj))
+
+        return pred_traj, label_traj, agents_traj, pred_tokens_all, label_tokens_all
 
     def test_teacher_forcing(self, data):
         """
-        Tests the model using teacher forcing (i.e. feeding in the teacher tokens as inputs)
-        to create trajectories. This method mimics the normal generation structure but uses
-        the provided ground truth tokens rather than letting the model predict from its own outputs.
-
-        Returns:
-          - teacher_pred_traj: List of trajectories produced by teacher forcing (after detokenization)
-          - label_traj: List of ground truth trajectories (after detokenization)
-          - agents_traj: List of agents trajectories in the map
+        Teacher-forcing test. Returns:
+          - teacher_pred_traj
+          - label_traj
+          - agents_traj
+          - pred_tokens_all
+          - label_tokens_all
         """
         teacher_pred_traj = []
         label_traj = []
         agents_traj = []
 
-        for each in data:
-            # Move the batch to the designated inference device.
-            batch = {k: v.to(self.infer_device) for k, v in each.items()}
+        pred_tokens_all = []
+        label_tokens_all = []
 
-            # Call the model with the entire data dictionary.
-            # This forward call performs a teacher forcing pass (using input_ids as teacher signals).
-            pred_logits, _, _ = self.model(batch)
+        for batch_dict in data:
+            batch_dict = {k: v.to(self.infer_device) for k, v in batch_dict.items()}
+            pred_logits, _, _ = self.model(batch_dict)
 
-            # Greedy decode: choose the token with maximum logit at each step.
-            teacher_pred_tokens = pred_logits.argmax(dim=-1)  # shape: (batch_size, sequence_length)
-
-            # Convert the teacher forced token predictions into trajectories.
+            # Greedy decode to get teacher-forced tokens
+            teacher_pred_tokens = pred_logits.argmax(dim=-1)  # (B, seq_len)
             for tokens in teacher_pred_tokens:
-                tokens_list = tokens.tolist() if isinstance(tokens, torch.Tensor) else tokens
-                teacher_pred = detokenize_traj_waypoints(
+                tokens_list = tokens.tolist()
+                pred_tokens_all.append(tokens_list)
+
+                detok_pred = detokenize_traj_waypoints(
                     tokens_list,
                     self.detokenizer,
                     self.train_cfg.bos_token,
                     self.train_cfg.eos_token,
-                    self.train_cfg.pad_token,
+                    self.train_cfg.pad_token
                 )
-                teacher_pred_traj.append(teacher_pred)
+                teacher_pred_traj.append(detok_pred)
 
-            # Also, convert the ground truth labels into trajectories.
-            for label_tokens in batch["labels"]:
-                label_tokens = label_tokens.tolist() if isinstance(label_tokens, torch.Tensor) else label_tokens
-                teacher_label = detokenize_traj_waypoints(
-                    label_tokens,
+            # Ground-truth
+            for label_tokens in batch_dict["labels"]:
+                label_tokens_list = label_tokens.tolist()
+                label_tokens_all.append(label_tokens_list)
+
+                detok_label = detokenize_traj_waypoints(
+                    label_tokens_list,
                     self.detokenizer,
                     self.train_cfg.bos_token,
                     self.train_cfg.eos_token,
-                    self.train_cfg.pad_token,
+                    self.train_cfg.pad_token
                 )
-                label_traj.append(teacher_label)
+                label_traj.append(detok_label)
 
-            # Process agent trajectories similar to the normal test function.
-            for agent_batch in batch["agent_info"]:
+            # Agents
+            for agent_batch in batch_dict["agent_info"]:
                 _agents_traj = []
-                # Transpose agent_batch: expected shape (seq_len, n_agents, features)
                 for agent in agent_batch.transpose(1, 0):
-                    # Assuming the first feature is the token; extract the token trajectory.
-                    agent_traj = agent[:, 0]
-                    agent_traj = detokenize_traj_waypoints(
-                        agent_traj.tolist(),
+                    agent_tokens = agent[:, 0]
+                    agent_detok = detokenize_traj_waypoints(
+                        agent_tokens.tolist(),
                         self.detokenizer,
                         self.train_cfg.bos_token,
                         self.train_cfg.eos_token,
-                        self.train_cfg.pad_token,
+                        self.train_cfg.pad_token
                     )
-                    # Remove the initial token if needed.
-                    _agents_traj.append(agent_traj[1:])
-                _agents_traj = np.array(_agents_traj)
-                agents_traj.append(_agents_traj)
+                    _agents_traj.append(agent_detok[1:])
+                agents_traj.append(np.array(_agents_traj))
 
-        return teacher_pred_traj, label_traj, agents_traj
+        return teacher_pred_traj, label_traj, agents_traj, pred_tokens_all, label_tokens_all

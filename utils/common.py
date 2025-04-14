@@ -31,7 +31,7 @@ def setup_callbacks(cfg_obj, monitor, mode):
         save_last=True
     )
     progress_bar = TQDMProgressBar()
-    model_summary = ModelSummary(max_depth=2)
+    model_summary = ModelSummary(max_depth=3)
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
     return [ckpt_callback, progress_bar, model_summary, lr_monitor]

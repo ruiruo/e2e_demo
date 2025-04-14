@@ -50,4 +50,3 @@ def plot_and_save_trajectories(pred_traj, label_traj, agents_traj, save_dir="tra
         save_path = os.path.join(save_dir, f"trajectory_{idx}.png")
         plt.savefig(save_path)
         plt.close()
-        print(f"Saved figure: {save_path}")
