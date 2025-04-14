@@ -2,6 +2,11 @@ try:
     from read_cache_op_py import read_cache_op_py as rcop
 except ImportError:
     print("import read_cache_op_py failed.")
+try:
+    import niofs
+    from niofs.conf import Cloud
+except ImportError:
+    print("import niofs failed.")
 import os, sys
 import numpy as np
 import pickle
@@ -18,8 +23,9 @@ class TFRecordProcessor:
         """
         Initializes the processor with configuration parameters.
         """
+        self.bucket = con_obj.bucket
+        self.client = niofs.Client(con_obj.access_key, con_obj.secret_key, max_pool_connections=20)
         self.tfrecord_niofs_path = config.tfrecord_niofs_path
-        self.tfrecord_files_list = config.tfrecord_files_list
         self.local_data_save_dir = config.local_data_save_dir
         self.save_tf_to_local_path_prefix = config.save_tf_to_local_tmp_path
         self.max_lane_num = config.max_lane_num
@@ -28,35 +34,32 @@ class TFRecordProcessor:
         self.vector_graph_feature_fea_dim = config.vector_graph_feature_fea_dim
         self.save_data_num_per = config.save_data_num_per
 
-    def generate_tfrecord_file_list(self):
+    def list_objects(self):
         """
-        Reads a text file where each line is formatted as:
-            49916499 1266015240/c3b7dee400f03510008534c16434cc74/triage_debug.tfrecord
-        and generates a list of strings in the following format:
-            /ad-cn-hfidc-pnc-data3/regressions-training/174886143/1266015240/c3b7dee400f03510008534c16434cc74/triage_debug.tfrecord 49916499
+        :param Bucket: Niofs桶名
+        :param Prefix: 远程路径前缀
+        :param Delimiter: 分隔符
+            Delimiter=None或''：递归遍历目录下所有的文件
+            Delimiter='/'：只遍历当前路径一级子目录和子文件
+        :param MaxKeys: 最大文件数,不能超过1000，超过1000依然返回1000个
+        :param NextMarker: 下次遍历的起点
+        """
 
-        Returns:
-            A list of strings in the required format.
-        """
-        result = []
-        with open(self.tfrecord_files_list, 'r') as file:
-            for line in file:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(maxsplit=1)
-                if len(parts) != 2:
-                    continue
-                # Skip lines where the first part is 0.
-                if int(parts[0]) == 0:
-                    continue
-                number, rel_path = parts
-                # Combine the base path with the relative path.
-                full_path = os.path.join(self.tfrecord_niofs_path, rel_path)
-                result.append(f"{full_path} {number}")
-                if len(result) > self.case_size * 1.5:
-                    break
-        return result
+        file_list = []
+        marker = ''
+        while marker is not None:
+            resp = self.client.list_objects(Bucket=self.bucket, Prefix=self.tfrecord_niofs_path, MaxKeys=1000,
+                                            Delimiter='', Marker=marker)
+            contents = resp.get("Contents")
+            if contents:
+                for result in contents:
+                    key = result.get("Key")
+                    size = result.get("Size")
+                    if size != 0:
+                        file_list.append(f"/{self.bucket}/{key} {size}")
+            next_marker = resp.get("NextMarker")
+            marker = next_marker
+        return file_list
 
     def save_niofs_file_to_local(self, file_path_in_niofs: str, case_id: str):
         """
@@ -330,9 +333,9 @@ class TFRecordProcessor:
             4. Clean up temporary file.
             5. Save processed data as pickle.
         """
-        file_list = self.generate_tfrecord_file_list()
+        file_list = self.list_objects()
 
-        pbar = tqdm(total=self.case_size, desc="Processing cases", unit="case")
+        pbar = tqdm(total=min(len(file_list), self.case_size), desc="Processing cases", unit="case")
 
         for file in file_list:
             # Update progress bar based on the current number of files in local_data_save_dir
