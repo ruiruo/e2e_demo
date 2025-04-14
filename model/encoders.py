@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from utils.config import Configuration
 
 
 class DynTanhNorm(nn.Module):
@@ -66,8 +65,7 @@ class BackgroundEncoder(nn.Module):
       3) output it as  K, V
     """
 
-    def __init__(self, cfg: Configuration, pos_embed_dim=256, pad_token=0, feat_dim=7, abs_dis_local=5,
-                 dropout=0.5, num_layers=1):
+    def __init__(self, pos_embed_dim=256, pad_token=0, feat_dim=7, abs_dis_local=5, dropout=0.5, num_layers=1):
         super(BackgroundEncoder, self).__init__()
         # Feature = (heading, v, acc, length, width, abs_dis, hit_dis)
         # heading, v, acc -> speed
@@ -78,7 +76,6 @@ class BackgroundEncoder(nn.Module):
         self.agent_state_encoder = StateEncoder(pos_embed_dim, feat_dim=feat_dim)
         self.pad_token = pad_token
         self.abs_dis_local = abs_dis_local
-        self.cfg = cfg
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=pos_embed_dim,
@@ -94,18 +91,6 @@ class BackgroundEncoder(nn.Module):
             num_layers=num_layers,
         )
 
-        self.fft_conv1d_1 = nn.Conv1d(
-            in_channels=pos_embed_dim,
-            out_channels=pos_embed_dim,
-            kernel_size=1
-        )
-        self.fft_conv1d_2 = nn.Conv1d(
-            in_channels=pos_embed_dim,
-            out_channels=pos_embed_dim,
-            kernel_size=3,
-            padding=1
-        )
-
     def forward(self, agent_emb, agent_feature, goal_emb, agent_mask=None):
         """
         - agent_emb: (batch, time, agent_num, pos_dim)
@@ -114,37 +99,16 @@ class BackgroundEncoder(nn.Module):
         - agent_mask: (batch, time, agent_num), 0 => not valid，
           out: (batch, time, agent_num, bert_hidden)
         """
-        if self.cfg.simple_deduction:
-            bz, t, sl, d_pos = agent_emb.shape
-            # ============ (1) Flatten (bz*t*sl, d_pos) ============
-            agent_emb_flat = agent_emb.reshape(bz * t * sl, d_pos)  # (batch_size', d_pos)
-            agent_feature_flat = agent_feature.reshape(bz * t * sl, -1)  # (batch_size', feat_dim)
+        bz, t, sl, d_pos = agent_emb.shape
+        # ============ (1) Flatten (bz*t*sl, d_pos) ============
+        agent_emb_flat = agent_emb.reshape(bz * t * sl, d_pos)  # (batch_size', d_pos)
+        agent_feature_flat = agent_feature.reshape(bz * t * sl, -1)  # (batch_size', feat_dim)
 
-            # ============ (2) DyT ============
-            #  -> (bz*t*sl, d_pos)
-            shifted_agent_emb = self.agent_state_encoder(agent_emb_flat, agent_feature_flat)
-            shifted_agent_emb = shifted_agent_emb.reshape(bz, t, sl, -1)
-        else:
-            bz, sl, d_pos = agent_emb.shape
-            # ============ (1) Flatten (bz*sl, d_pos) ============
-            agent_emb_flat = agent_emb.reshape(bz * sl, d_pos)  # (batch_size', d_pos)
-            agent_feature_flat = agent_feature.reshape(bz * sl, -1)  # (batch_size', feat_dim)
+        # ============ (2) DyT ============
+        #  -> (bz*t*sl, d_pos)
+        shifted_agent_emb = self.agent_state_encoder(agent_emb_flat, agent_feature_flat)
+        shifted_agent_emb = shifted_agent_emb.reshape(bz, t, sl, -1)
 
-            # ============ (2) DyT ============
-            #  -> (bz*sl, d_pos)
-            shifted_agent_emb = self.agent_state_encoder(agent_emb_flat, agent_feature_flat)
-            shifted_agent_emb = shifted_agent_emb.reshape(bz, sl, -1)
-
-            # ============ implicit_fft ============
-            #  -> (bz*t*sl, d_pos)
-            x = shifted_agent_emb.permute(0, 2, 1)
-            x = self.fft_conv1d_1(x)
-            x = self.fft_conv1d_2(x)
-            shifted_agent_emb = x.permute(0, 2, 1)
-            t = self.cfg.max_frame + 1
-            shifted_agent_emb = shifted_agent_emb.unsqueeze(1).repeat(1, t, 1, 1)
-
-        t = agent_emb.shape[1] if len(agent_emb.shape) == 4 else self.cfg.max_frame + 1
         # ============ (3) goal as a extra agent ============
         goal = goal_emb.unsqueeze(1).repeat(1, t, 1)
         goal = goal.unsqueeze(2)

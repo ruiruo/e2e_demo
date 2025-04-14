@@ -348,10 +348,6 @@ class AgentFeatureParser:
             # 4. Append minimum polygon (bounding box) distance between ego and each agent.
             new_agent_info = self._append_min_polygon_distance(new_agent_info)
 
-            # Filter out ego's subarray
-            mask_id_not_zero = new_agent_info[:, 0] != 0
-            new_agent_info = new_agent_info[mask_id_not_zero]
-
         # 5. Remove agents id col
         if self.simple_deduction:
             new_agent_info = new_agent_info[:, :, 1:]
@@ -394,10 +390,9 @@ class AgentFeatureParser:
         agent_info[mask, 3] -= self.pos_bias[2]
         agent_info[mask, 3] = (agent_info[mask, 3] + np.pi) % (2 * np.pi) - np.pi
 
-        if self.simple_deduction:
-            # Filter out ego's subarray
-            mask_id_not_zero = agent_info[:, 0] != 0
-            agent_info = agent_info[mask_id_not_zero]
+        # Filter out ego's subarray
+        mask_id_not_zero = agent_info[:, 0] != 0
+        agent_info = agent_info[mask_id_not_zero]
 
         # TODO: Sort agent_info to prevent valid agents from being truncated
 

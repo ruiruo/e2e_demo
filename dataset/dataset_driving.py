@@ -19,7 +19,6 @@ def process_task(args):
     try:
         traje_info_obj = TrajectoryInfoParser(task_index, task_path, cfg)
     except Exception as e:
-        print("Ignore TrajectoryInfoParser task")
         # Log exception or ignore this task
         return trajectories_list, trajectories_gt_list, trajectories_goals_list, trajectories_agent_info_list, ego_info_list
 
@@ -160,11 +159,9 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         # --------------------------------------------------------------------------
         seen = {}
         unique_indices = []
-        if self.cfg.simple_deduction:
-            data = zip(self.trajectories, self.trajectories_gt, self.trajectories_agent_info[:, 0, :, 0])
-        else:
-            data = zip(self.trajectories, self.trajectories_gt, self.trajectories_agent_info[:, :, 0])
-        for i, (traj, traj_gt, traj_agent) in enumerate(data):
+        for i, (traj, traj_gt, traj_agent) in enumerate(
+                zip(self.trajectories, self.trajectories_gt, self.trajectories_agent_info[:, 0, :, 0])
+        ):
             key = (traj.tobytes(), traj_gt.tobytes(), traj_agent.tobytes())
             if key not in seen:
                 seen[key] = i
