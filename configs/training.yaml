@@ -5,7 +5,7 @@ training_dir: "train"
 validation_dir: "val"
 is_train: True
 multi_agent_info: False
-simple_deduction: True
+simple_deduction: True  # False use implicit_fft
 max_train: 5000000
 max_val: 1000000
 

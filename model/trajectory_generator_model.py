@@ -22,6 +22,7 @@ class TrajectoryGenerator(nn.Module):
         )
         # Background encoder: uses BackgroundEncoder to handle multiple agents + final goal
         self.background_encoder = BackgroundEncoder(
+            cfg = self.cfg,
             pos_embed_dim=self.cfg.embedding_dim,
             pad_token=self.cfg.pad_token,
             feat_dim=5,  # features: (heading, v, acc, length, width, abs_dis, hit_dis)
@@ -101,21 +102,38 @@ class TrajectoryGenerator(nn.Module):
         3) The goal token is embedded and treated as an extra agent in the topology.
         4) Output shape: (B, T, S+1, embed)
         """
-        bz, timer, num_agent, _ = data['agent_info'].shape
+        if self.cfg.simple_deduction:
+            bz, timer, num_agent, _ = data['agent_info'].shape
+            # agent_token: (B, T, S)
+            agent_token = data['agent_info'][:, :, :, 0]
+            agent_mask = (agent_token != -1)
+            agent_token = agent_token.clone()
+            agent_token[~agent_mask] = self.cfg.pad_token
 
-        # agent_token: (B, T, S)
-        agent_token = data['agent_info'][:, :, :, 0]
-        agent_mask = (agent_token != -1)
-        agent_token = agent_token.clone()
-        agent_token[~agent_mask] = self.cfg.pad_token
+            # Flatten for embedding: (B*T*S,)
+            agent_token = agent_token.view(-1).long().to(self.cfg.device, non_blocking=True)
+            agent_embedding = self.token_embedding(agent_token)
+            agent_embedding = agent_embedding.view(bz, timer, num_agent, -1)
 
-        # Flatten for embedding: (B*T*S,)
-        agent_token = agent_token.view(-1).long().to(self.cfg.device, non_blocking=True)
-        agent_embedding = self.token_embedding(agent_token)
-        agent_embedding = agent_embedding.view(bz, timer, num_agent, -1)
+            # agent_features: (B, T, S, c-1)
+            agent_features = data['agent_info'][:, :, :, 1:6].to(self.cfg.device, non_blocking=True)
+        else:
+            bz, num_agent, _ = data['agent_info'].shape
+            # agent_token: (B, S)
+            agent_token = data['agent_info'][:, :, 0]
+            agent_mask = (agent_token != -1)
+            agent_token = agent_token.clone()
+            agent_token[~agent_mask] = self.cfg.pad_token
+            agent_mask = agent_mask.unsqueeze(1).repeat(1, self.cfg.max_frame + 1, 1)
 
-        # agent_features: (B, T, S, c-1)
-        agent_features = data['agent_info'][:, :, :, 1:6].to(self.cfg.device, non_blocking=True)
+            # Flatten for embedding: (B*S,)
+            agent_token = agent_token.view(-1).long().to(self.cfg.device, non_blocking=True)
+            agent_embedding = self.token_embedding(agent_token)
+            agent_embedding = agent_embedding.view(bz, num_agent, -1)
+
+            # agent_features: (B, S, c-1)
+            agent_features = data['agent_info'][:, :, 1:6].to(self.cfg.device, non_blocking=True)
+
         # goal: (B,) => embedded => (B, embed)
         goal_token = data["goal"].view(bz).long().to(self.cfg.device, non_blocking=True)
         goal_embedding = self.token_embedding(goal_token)  # (B, embed)
