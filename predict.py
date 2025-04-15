@@ -2,7 +2,6 @@ from pytorch_lightning import seed_everything
 from utils.config import get_inference_config_obj
 from dataset.dataloader import DataLoader, TrajectoryDataModule
 from model.trajectory_generator_predict import TrajectoryPredictModule
-from utils.display import plot_and_save_trajectories
 seed_everything(15)
 pred_config_obj = get_inference_config_obj("./configs/predict.yaml")
 train_config_obj = pred_config_obj.train_meta_config
