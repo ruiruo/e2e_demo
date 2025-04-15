@@ -42,10 +42,10 @@ log_root_dir: '/home/chester.lin/log/'
 checkpoint_root_dir: '/home/chester.lin/checkpoints/'
 log_every_n_steps: 200
 check_val_every_n_epoch: 1
-epochs: 100
+epochs: 1000
 learning_rate: 0.0005
 weight_decay: 0.0001
-batch_size: 512
+batch_size: 256
 num_workers: 15
 max_agent: 5
 ignore_eos_loss: True
