@@ -11,7 +11,8 @@ config_obj.local_data_save_dir = "/home/nio/"
 config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
 config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
 config_obj.batch_size = 4
-
+config_obj.max_frame = 30
+config_obj.num_workers = 8
 
 data = TrajectoryDataloaderModule(cfg=config_obj)
 data.setup("train")
