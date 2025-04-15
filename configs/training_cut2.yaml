@@ -12,9 +12,9 @@ max_val: 1000000
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
 tfrecord_files_list: "/share-pnc/shaoqian.li/data/data_list.txt" # same_navi_1217_4w: 143297340
-bucket: ""
-access_key: ""
-secret_key: ""
+bucket: ad-cn-hfidc-pnc-data3
+access_key: 8fd6a2c297574ba8
+secret_key: a6089ccf0e85449a92c6f1b70dec79d3
 local_data_save_dir: "/home/shaoqian.li/data/raw_data"
 save_tf_to_local_tmp_path: "/tmp/random_tmp"
 save_data_num_per: 35
