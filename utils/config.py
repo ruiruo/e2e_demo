@@ -15,7 +15,7 @@ class Configuration:
     data_dir: str
     training_dir: str
     validation_dir: str
-    token_nums: int
+    token_nums  : int
     tokenizer: str
     detokenizer: str
     multi_agent_info: bool
