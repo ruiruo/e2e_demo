@@ -45,7 +45,7 @@ def compute_metrics(pred_traj, label_traj, pred_tokens, label_tokens):
 
 
 seed_everything(15)
-pred_config_obj = get_inference_config_obj("./configs/predict.yaml")
+pred_config_obj = get_inference_config_obj("./configs/predict_30_frames.yaml")
 train_config_obj = pred_config_obj.train_meta_config
 train_config_obj.log_every_n_steps = 2
 train_config_obj.max_train = 100
