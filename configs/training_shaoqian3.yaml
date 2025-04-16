@@ -54,6 +54,7 @@ customized_metric: True
 ar_start_epoch: 10
 ar_warmup_epochs: 100
 max_grad_norm: 2.0
+experiment_name: e2e_planner
 
 ##################### Data Process #####################
 tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"

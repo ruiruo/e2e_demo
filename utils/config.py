@@ -11,6 +11,7 @@ from loguru import logger
 @dataclass
 class Configuration:
     # Dataset Options
+    experiment_name: str
     data_dir: str
     training_dir: str
     validation_dir: str

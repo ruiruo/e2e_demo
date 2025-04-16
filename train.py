@@ -22,7 +22,7 @@ def main(config_obj):
     )
 
     mlflow_logger = MLFlowLogger(
-        experiment_name="e2e_planner",
+        experiment_name=config_obj.experiment_name,
         run_name=run_name,
         tracking_uri="http://172.21.191.16:9999"
     )

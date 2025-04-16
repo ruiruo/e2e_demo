@@ -8,6 +8,7 @@ multi_agent_info: False
 simple_deduction: True
 max_train: 5000000
 max_val: 1000000
+experiment_name: e2e_planner_30_frame
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
