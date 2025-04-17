@@ -8,6 +8,7 @@ try:
 except ImportError:
     print("import niofs failed.")
 import os, sys
+from pathlib import Path
 import numpy as np
 import pickle
 import tensorflow as tf
@@ -335,14 +336,23 @@ class TFRecordProcessor:
         """
         file_list = self.list_objects()
 
-        pbar = tqdm(total=min(len(file_list), self.case_size), desc="Processing cases", unit="case")
+        exist_count = len(os.listdir(self.local_data_save_dir))
+        print(f"The number of valid cases is {exist_count}")
 
-        for file in file_list:
+        if not os.path.exists(self.local_data_save_dir):
+            os.makedirs(self.local_data_save_dir)
+        existing_case_ids = {
+            d.name for d in Path(self.local_data_save_dir).iterdir() if d.is_dir()
+        }
+        filtered_files = [f for f in file_list
+                          if Path(f).parts[-2] not in existing_case_ids]
+        pbar = tqdm(total=min(len(filtered_files), self.case_size - exist_count),
+                    desc="Processing cases", unit="case")
+
+        for file in filtered_files:
             # Update progress bar based on the current number of files in local_data_save_dir
-            if not os.path.exists(self.local_data_save_dir):
-                os.makedirs(self.local_data_save_dir)
             current_count = len(os.listdir(self.local_data_save_dir))
-            pbar.n = current_count
+            pbar.n = current_count - exist_count
             pbar.refresh()
             if current_count >= self.case_size:
                 pbar.close()
