@@ -8,6 +8,7 @@ multi_agent_info: False
 simple_deduction: True
 max_train: 5000000
 max_val: 1000000
+experiment_name: e2e_planner
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
@@ -54,7 +55,6 @@ customized_metric: True
 ar_start_epoch: 10
 ar_warmup_epochs: 100
 max_grad_norm: 2.0
-experiment_name: e2e_planner
 
 ##################### Data Process #####################
 tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
