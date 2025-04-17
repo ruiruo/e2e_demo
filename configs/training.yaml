@@ -8,10 +8,10 @@ multi_agent_info: False
 simple_deduction: True
 max_train: 5000000
 max_val: 1000000
+experiment_name: e2e_planner
 
 ##################### Dataset Generate Options #####################
-tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
-tfrecord_files_list: "/share-pnc/shaoqian.li/data/data_list.txt" # same_navi_1217_4w: 143297340
+tfrecord_niofs_path: "regressions-training/188391410"
 bucket: ad-cn-hfidc-pnc-data3
 access_key: 8fd6a2c297574ba8
 secret_key: a6089ccf0e85449a92c6f1b70dec79d3
