@@ -61,13 +61,13 @@ tokenizer: "/home/chester.lin/reparke2e/configs/local2token.npy"
 detokenizer: "/home/chester.lin/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 512
+embedding_dim: 256
 num_topy_layers: 1
 ##################### Decoder #####################
 item_number: 8
 dropout: 0.5
-tf_de_dim: 512
-tf_de_heads: 16
+tf_de_dim: 256
+tf_de_heads: 4
 tf_de_layers: 8
 ##################### Data #####################
 max_frame: 30
