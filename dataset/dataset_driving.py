@@ -47,7 +47,7 @@ def process_task(args):
 
 
 class TrajectoryDataModule(torch.utils.data.Dataset):
-    def __init__(self, config: Configuration, is_train):
+    def __init__(self, config: Configuration, data_path, max_allow):
         super(TrajectoryDataModule, self).__init__()
         self.cfg = config
         self.BOS_token = self.cfg.bos_token
@@ -59,8 +59,8 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
         with open(self.cfg.detokenizer, "r") as f:
             self.detokenizer = json.load(f)
 
-        self.root_dir = self.cfg.data_dir
-        self.is_train = is_train
+        self.data_path = data_path
+        self.max_allow = max_allow
         self.ego_info = []
         self.goal_info = []
         self.trajectories = []
@@ -123,14 +123,10 @@ class TrajectoryDataModule(torch.utils.data.Dataset):
 
     def _get_all_tasks(self):
         all_tasks = []
-        train_data_dir = os.path.join(self.root_dir, self.cfg.training_dir)
-        val_data_dir = os.path.join(self.root_dir, self.cfg.validation_dir)
-        data_dir = train_data_dir if self.is_train == 1 else val_data_dir
-        allow = self.cfg.max_train if self.is_train == 1 else self.cfg.max_val
-        for scene_item in os.listdir(data_dir):
-            task_path = os.path.join(data_dir, scene_item)
+        for scene_item in os.listdir(self.data_path):
+            task_path = os.path.join(self.data_path, scene_item)
             all_tasks.append(task_path)
-            if len(all_tasks) >= allow:
+            if len(all_tasks) >= self.max_allow:
                 break
         return all_tasks
 

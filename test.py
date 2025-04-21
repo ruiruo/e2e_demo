@@ -45,12 +45,11 @@ def compute_metrics(pred_traj, label_traj, pred_tokens, label_tokens):
 
 
 seed_everything(15)
-pred_config_obj = get_inference_config_obj("./configs/predict_30_frames.yaml")
+pred_config_obj = get_inference_config_obj("./configs/predict.yaml")
 train_config_obj = pred_config_obj.train_meta_config
 train_config_obj.log_every_n_steps = 2
-train_config_obj.max_train = 100
-train_config_obj.max_val = 50
-train_config_obj.data_dir = "/home/nio/data/"
+train_config_obj.max_train = 10000
+train_config_obj.max_val = 500
 train_config_obj.log_dir = train_config_obj.log_dir.replace("shaoqian.li", "nio")
 train_config_obj.checkpoint_dir = train_config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
 train_config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
@@ -67,7 +66,9 @@ print("Model summary:")
 print(inference_obj.model)
 
 # Create the DataLoader for evaluation.
-data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj, is_train=1),
+data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj,
+                                               data_path="/home/nio/data/road_test",
+                                               max_allow=10000000),
                   batch_size=train_config_obj.batch_size,
                   shuffle=True,
                   num_workers=train_config_obj.num_workers,
