@@ -3,7 +3,7 @@ data_dir: '/home/chester.lin/data/'
 # data_dir: '/home/nio/data/e2e_example/'
 training_dir: "train"
 validation_dir: "val"
-is_train: True
+experiment_name True
 multi_agent_info: False
 simple_deduction: True
 max_train: 5000000
