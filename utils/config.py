@@ -37,6 +37,7 @@ class Configuration:
     max_val: int
 
     # Basic Options
+    with_pad: bool
     data_mode: str
     num_gpus: int
     cuda_device_index: str

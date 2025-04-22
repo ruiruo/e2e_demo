@@ -3,9 +3,9 @@ data_dir: '/home/shaoqian.li/data/'
 # data_dir: '/home/nio/data/e2e_example/'
 training_dir: "train"
 validation_dir: "val"
-experiment_name True
 multi_agent_info: False
 simple_deduction: True
+with_pad: False
 max_train: 5000000
 max_val: 1000000
 experiment_name: e2e_planner

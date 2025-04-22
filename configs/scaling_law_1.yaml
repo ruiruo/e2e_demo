@@ -1,6 +1,5 @@
 ##################### Dataset Options #####################
-data_dir: '/home/shaoqian.li/data/'
-# data_dir: '/home/nio/data/e2e_example/'
+data_dir: '~/data/reparke2e_sl/6k'
 training_dir: "train"
 validation_dir: "val"
 multi_agent_info: False
@@ -39,14 +38,14 @@ vector_graph_feature_fea_dim: [
 data_mode: "topology"
 num_gpus: 1
 cuda_device_index: "0"
-log_root_dir: '/home/shaoqian.li/log/'
-checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
+log_root_dir: '~/log/'
+checkpoint_root_dir: '~/checkpoints/'
 log_every_n_steps: 200
 check_val_every_n_epoch: 1
 epochs: 100
 learning_rate: 0.0005
 weight_decay: 0.0001
-batch_size: 256
+batch_size: 512
 num_workers: 15
 max_agent: 5
 ignore_eos_loss: True
@@ -57,8 +56,8 @@ ar_warmup_epochs: 100
 max_grad_norm: 2.0
 
 ##################### Data Process #####################
-tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
-detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
+tokenizer: "~/reparke2e/configs/local2token.npy"
+detokenizer: "~/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
 embedding_dim: 256
@@ -68,7 +67,7 @@ item_number: 8
 dropout: 0.5
 tf_de_dim: 256
 tf_de_heads: 4
-tf_de_layers: 12
+tf_de_layers: 4
 ##################### Data #####################
 max_frame: 10
 token_nums: 510

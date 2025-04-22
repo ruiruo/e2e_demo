@@ -11,7 +11,8 @@ class TrajectoryGenerator(nn.Module):
         # Embedding for tokens (inputs, outputs, etc.)
         self.token_embedding = nn.Embedding(
             num_embeddings=self.cfg.token_nums,
-            embedding_dim=self.cfg.embedding_dim
+            embedding_dim=self.cfg.embedding_dim,
+            padding_idx=self.cfg.pad_token
         )
         # Encoder
         # Self-state encoder: uses StateEncoder to fuse the vehicle's own info
@@ -55,7 +56,9 @@ class TrajectoryGenerator(nn.Module):
           2) env_state  (K, V): (B, T, S+1, embed)
         """
         self_state = self.encode_self_state(data)
+
         env_state = self.encode_agent_topology(data)
+
         return self_state, env_state
 
     def encode_self_state(self, data):
@@ -74,6 +77,7 @@ class TrajectoryGenerator(nn.Module):
 
         # (B, L) -> flatten -> (B*L,)
         input_ids = data['input_ids'].reshape(-1).to(self.cfg.device, non_blocking=True)
+
         input_embedding = self.token_embedding(input_ids)  # (B*L, embed)
 
         # ego_info: (B, 3) -> replicate for L steps => (B, L, 3) -> (B*L, 3)
@@ -81,11 +85,9 @@ class TrajectoryGenerator(nn.Module):
         ego_info = ego_info.repeat(1, l, 1).reshape(b * l, -1)
 
         # StateEncoder (DyT style): fuse input_embedding & ego_info
-        self_state_flat = self.self_state_encoder(input_embedding, ego_info)  # (B*L, embed)
+        fused = self.self_state_encoder(input_embedding, ego_info)
 
-        # reshape back to (B, L, embed)
-        self_state = self_state_flat.view(b, l, -1)
-        return self.input_norm(self_state)
+        return self.input_norm(fused.view(b, l, -1))
 
     def encode_agent_topology(self, data):
         """
@@ -101,10 +103,12 @@ class TrajectoryGenerator(nn.Module):
         3) The goal token is embedded and treated as an extra agent in the topology.
         4) Output shape: (B, T, S+1, embed)
         """
-        bz, timer, num_agent, _ = data['agent_info'].shape
+        agent_info = data['agent_info']
+
+        bz, timer, num_agent, _ = agent_info.shape
 
         # agent_token: (B, T, S)
-        agent_token = data['agent_info'][:, :, :, 0]
+        agent_token = agent_info[:, :, :, 0]
         agent_mask = (agent_token != -1)
         agent_token = agent_token.clone()
         agent_token[~agent_mask] = self.cfg.pad_token
@@ -115,7 +119,8 @@ class TrajectoryGenerator(nn.Module):
         agent_embedding = agent_embedding.view(bz, timer, num_agent, -1)
 
         # agent_features: (B, T, S, c-1)
-        agent_features = data['agent_info'][:, :, :, 1:6].to(self.cfg.device, non_blocking=True)
+        agent_features = agent_info[:, :, :, 1:6].to(self.cfg.device, non_blocking=True)
+
         # goal: (B,) => embedded => (B, embed)
         goal_token = data["goal"].view(bz).long().to(self.cfg.device, non_blocking=True)
         goal_embedding = self.token_embedding(goal_token)  # (B, embed)
@@ -127,6 +132,7 @@ class TrajectoryGenerator(nn.Module):
             goal_emb=goal_embedding,
             agent_mask=agent_mask
         )
+
         return self.memory_norm(background_state)
 
     # Decoder parts
@@ -140,7 +146,7 @@ class TrajectoryGenerator(nn.Module):
         ).bool()
         return mask
 
-    def decoder(self, tgt_emb, memory, tgt_mask=None):
+    def decoder(self, tgt_emb, memory, tgt_mask=None, tgt_kp_mask=None):
         """
         Transformer decoder forward pass:
           1) self-attention on tgt_emb
@@ -149,14 +155,12 @@ class TrajectoryGenerator(nn.Module):
         """
         dec_out = self.trajectory_gen(
             tgt=tgt_emb,
-            memory=memory,  # shape => (some_mem_len, B, D)
-            tgt_mask=tgt_mask
+            memory=memory,
+            tgt_mask=tgt_mask,
+            tgt_key_padding_mask=tgt_kp_mask
         )
-        # => (tgt seq len, batch size, embed)
-        # Project to vocabulary space
         dec_out = self.output_norm(dec_out)
-        pred_traj_points = self.output_projection(dec_out)
-        return pred_traj_points
+        return self.output_projection(dec_out)
 
     def forward(self, data):
         # data = {"input_ids", "labels", "agent_info", "ego_info", "goal"}
@@ -166,21 +170,28 @@ class TrajectoryGenerator(nn.Module):
         # ego_info    ; (bz, f_ego)                   ; [bz, (heading, v, acc)]
         # goal        ; (bz, 1)
         bz, length = data["input_ids"].shape
+        tgt_kp_mask = (data["input_ids"] == self.cfg.pad_token).to(self.cfg.device)
+        causal_mask = self.create_mask(length).to(self.cfg.device)
+
         # Q, KV
         self_state, env_state = self.encoder(data)
         bz, t, num_agents, dim_agents = env_state.shape
         env_state = env_state.permute(1, 0, 2, 3)
         mem = [self.get_env_window_around_t(env_state, i) for i in range(t)]
         mem = torch.concatenate([torch.unsqueeze(i, 0) for i in mem], dim=0)
+
         mem = mem.reshape(t * num_agents * 3, bz, dim_agents)  # [t, agent * 3, bz, dim]
+
         tgt = self_state.transpose(0, 1)  # [t, bz, dim]
-        causal_mask = self.create_mask(length)  # [t, t]
+
         # cross attention
         pred_logits = self.decoder(
             tgt_emb=tgt,
             memory=mem,
-            tgt_mask=causal_mask
+            tgt_mask=causal_mask,
+            tgt_kp_mask=tgt_kp_mask
         )
+
         # (bz, length, vocab)
         pred_logits = pred_logits.transpose(0, 1)
         return pred_logits, self_state, env_state
@@ -198,7 +209,19 @@ class TrajectoryGenerator(nn.Module):
 
         # 1) Encode to get self_state, env_state
         self_state, env_state = self.encoder(data)
+
         env_state = env_state.permute(1, 0, 2, 3)
+        bz, timer, n_agent, _ = data["agent_info"].shape  # n_agent real agents
+        goal_pad = torch.zeros((bz, timer, 1),  # goal is always valid
+                               dtype=torch.bool,
+                               device=self.cfg.device)
+
+        agent_pad = (data["agent_info"][..., 0] == self.cfg.pad_token)  # (B,T,S)
+        mem_kpm_base = torch.cat([agent_pad, goal_pad], dim=2)  # (B,T,S+1)
+
+        # repeat each frame three times (t‑1, t, t+1) and flatten
+        mem_kpm_base = mem_kpm_base.repeat_interleave(3, dim=2)  # (B,T,3*(S+1))
+
         # 2) Extract velocity embedding => shape (B,1,D)
         start_emb = self_state[:, 0, :].unsqueeze(1)
 
@@ -223,7 +246,8 @@ class TrajectoryGenerator(nn.Module):
             partial_emb_tbd = partial_emb.transpose(0, 1)  # shape => (#seq, B, D)
 
             # c) Get environment "memory" (3 frames around t = step_i)
-            mem = self.get_env_window_around_t(env_state, step_i)
+            mem = self.get_env_window_around_t(env_state, step_i)  # (3*A, B, D)
+            mem_kpm = self._get_mem_mask_around_t(mem_kpm_base, step_i)
 
             # d) Causal mask
             causal_mask = self.create_mask(partial_emb_tbd.size(0))
@@ -232,7 +256,9 @@ class TrajectoryGenerator(nn.Module):
             dec_out = self.trajectory_gen(
                 tgt=partial_emb_tbd,
                 memory=mem,
-                tgt_mask=causal_mask
+                tgt_mask=causal_mask,
+                tgt_key_padding_mask=None,
+                memory_key_padding_mask=mem_kpm
             )
 
             # f) Project to vocab => (seq_len, B, vocab)
@@ -246,6 +272,7 @@ class TrajectoryGenerator(nn.Module):
 
             # i) Append to outputs
             generated_tokens = torch.cat([generated_tokens, next_token], dim=1)
+
             all_step_logits[:, step_i, :] = next_token_logits
 
         # shape:
@@ -288,3 +315,12 @@ class TrajectoryGenerator(nn.Module):
         # Transpose to ( #frames*A, B, D ), the standard shape for cross-attention
         frames_cat = frames_cat.transpose(0, 1)
         return frames_cat
+
+    @staticmethod
+    def _get_mem_mask_around_t(mask_base, t):
+        """
+        mask_base: (B, T, 3*(S+1))
+        returns  : (B, 3*(S+1))   –  matches memory_key_padding_mask shape
+        """
+        # just pick frame t (already repeated 3×)
+        return mask_base[:, t]  # (B, source_len)

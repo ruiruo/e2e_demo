@@ -192,10 +192,47 @@ class TopologyHistory:
         self.info["goal_info"] = self.ego_raw_pos[-1]
         self._cut()
 
+    def _pad(self):
+        """
+        If the window trimmed by _cut( ) is shorter than max_frame,
+        append synthetic rows so that
+
+            ego_info.shape[0]  ==  max_frame
+            agent_info.shape[0] == max_frame    (simple_deduction=True)
+                             or  == unchanged   (simple_deduction=False)
+
+        •  The *token* column of padded ego rows  →  cfg.pad_token  (e.g. 509)
+        •  All continuous fields (x, y, heading, v, acc, …)         →  -300.
+        •  For `agent_info` we create rows filled with `-300`
+           and set the token slot to `cfg.pad_token`.
+        """
+
+        cur_len = self.info["ego_info"].shape[0]
+        if cur_len >= self.max_frame:  # already full – nothing to do
+            return False
+
+        pad_len = self.max_frame - cur_len
+        F_ego = self.info["ego_info"].shape[1]
+        PAD_NUM = -300.0  # numeric sentinel, matches rest of code
+
+        pad_ego = np.full((pad_len, F_ego), PAD_NUM, dtype=self.info["ego_info"].dtype)
+        pad_ego[:, 0] = self.pad_token  # token column
+        self.info["ego_info"] = np.concatenate([self.info["ego_info"], pad_ego], axis=0)
+
+        # keep raw (x,y) list in sync
+        pad_raw = np.full((pad_len, 2), PAD_NUM, dtype=self.ego_raw_pos.dtype)
+        self.ego_raw_pos = np.concatenate([self.ego_raw_pos, pad_raw], axis=0)
+        return True
+
     def _cut(self):
+        """
+        Keep the last `max_frame` steps of every time‑dependent tensor so that
+        ego_info and agent_info always have the same length before padding.
+        """
+        # -------- ego ----------
         self.info["ego_info"] = self.info["ego_info"][-self.max_frame - 1:-1, :]
         self.ego_raw_pos = self.ego_raw_pos[-self.max_frame - 1:-1, :]
-        self.info["agent_info"] = self.info["agent_info"]
+        self._pad()
 
     def _preprocess_agent(self, feature):
         parser = AgentFeatureParser(self.cfg, feature)
@@ -651,6 +688,7 @@ class TrajectoryInfoParser:
         self._get_data()
 
     def _get_data(self):
+        PAD_ROW_VALUE = -300.0
         for each in os.listdir(self.task_path):
             with open(os.path.join(self.task_path, each), 'rb') as f:
                 data = pickle.load(f)
@@ -663,9 +701,12 @@ class TrajectoryInfoParser:
                 ego_history = data['ego_history_feature']
                 agent_feature = data['agent_feature']
                 slice_length = ego_history.shape[0]
-
-                for start_idx in range(slice_length - self.max_frame):
-                    end_idx = start_idx + self.max_frame + 1
+                if self.cfg.with_pad:
+                    total = slice_length - 5
+                else:
+                    total = slice_length - self.max_frame
+                for start_idx in range(total):
+                    end_idx = start_idx + self.max_frame
                     ego_window = ego_history[start_idx:end_idx]
                     agent_window = agent_feature[:, start_idx, :]
                     topology_history = TopologyHistory(
@@ -849,3 +890,26 @@ class TrajectoryDistance:
         descriptors = np.fft.fft(complex_points)
         descriptors = np.abs(descriptors[:num_descriptors])
         return descriptors
+
+
+if __name__ == '__main__':
+    from utils.config import get_train_config_obj
+
+    config_obj = get_train_config_obj(config_path="/home/nio/reparke2e/configs/training_local.yaml")
+    config_obj.log_every_n_steps = 1
+    config_obj.max_train = 20
+    config_obj.max_val = 10
+    config_obj.epochs = 1
+    config_obj.data_dir = "/home/nio/data/"
+    config_obj.log_dir = config_obj.log_dir.replace("shaoqian.li", "nio")
+    config_obj.checkpoint_dir = config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
+    config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
+    config_obj.local_data_save_dir = "/home/nio/"
+    config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
+    config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
+    config_obj.batch_size = 4
+    config_obj.ar_start_epoch = 1
+    config_obj.ar_warmup_epochs = 1
+    data = TrajectoryInfoParser(0,
+                                "/home/nio/data/train/000a001b4774893ec946cd3f352a9a23/",
+                                config_obj)
