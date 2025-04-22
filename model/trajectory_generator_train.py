@@ -86,7 +86,8 @@ class TrajectoryTrainingModule(pl.LightningModule):
         else:
             train_loss = tf_loss
 
-        self.log("train_loss", train_loss, prog_bar=True, logger=True)
+        metrics = {"train_loss": float(train_loss.cpu())}
+        self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
         return train_loss
 
     def validation_step(self, batch, batch_idx):
