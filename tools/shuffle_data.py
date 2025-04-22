@@ -118,8 +118,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     layer = args.layer
     RAW_DATA_DIR = os.path.expanduser("~/data/scaling_law/scaling_law_%s" % layer)
-    TRAIN_DIR = os.path.expanduser("~/data/train_%s/" % layer)
-    VAL_DIR = os.path.expanduser("~/data/val_%s/")
+    TRAIN_DIR = os.path.expanduser("~/data/reparke2e_sl/%s/train/" % layer)
+    VAL_DIR = os.path.expanduser("~/data/reparke2e_sl/%s/val/")
     TEST_DIR = None
 
     TRAIN_RATIO = 0.8
