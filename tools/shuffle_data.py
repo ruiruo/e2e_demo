@@ -1,7 +1,9 @@
 import os
 import shutil
 import random
+import argparse
 from multiprocessing import Pool
+
 
 def _process_folder(args):
     """
@@ -17,6 +19,7 @@ def _process_folder(args):
         shutil.copytree(src_path, dst_path)
     else:
         shutil.move(src_path, dst_path)
+
 
 def split_folders(raw_data_dir: str, train_dir: str, val_dir: str, test_dir: str = None,
                   train_ratio: float = 0.8, val_ratio: float = 0.2, copy_mode: bool = True,
@@ -103,21 +106,29 @@ def split_folders(raw_data_dir: str, train_dir: str, val_dir: str, test_dir: str
 
     print("Split complete!")
 
-if __name__ == "__main__":
-    # Define paths for raw data, training, validation, and test directories
-    RAW_DATA_DIR = os.path.expanduser("~/data/raw_data/")
-    TRAIN_DIR = os.path.expanduser("~/data/train/")
-    VAL_DIR = os.path.expanduser("~/data/val/")
-    TEST_DIR = os.path.expanduser("~/data/test/")  # New test directory
 
-    # Set the ratios for three splits: 75% training, 20% validation, and implicitly 5% test
-    TRAIN_RATIO = 0.75
-    VAL_RATIO = 0.20
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Training script for trajectory generator.")
+    parser.add_argument(
+        "--layer",
+        type=str,
+        default="6k"
+    )
+    # Define paths for raw data, training, validation, and test directories
+    args = parser.parse_args()
+    layer = args.layer
+    RAW_DATA_DIR = os.path.expanduser("~/data/scaling_law/scaling_law_%s" % layer)
+    TRAIN_DIR = os.path.expanduser("~/data/train_%s/" % layer)
+    VAL_DIR = os.path.expanduser("~/data/val_%s/")
+    TEST_DIR = None
+
+    TRAIN_RATIO = 0.8
+    VAL_RATIO = 0.2
     # Note: When test_dir is provided, test ratio is computed as 1 - TRAIN_RATIO - VAL_RATIO
 
     COPY_MODE = True
     USE_MULTIPROCESSING = True  # Enable multiprocessing
-    NUM_WORKERS = 4            # Adjust based on your system's CPU cores
+    NUM_WORKERS = 15  # Adjust based on your system's CPU cores
 
     # Set a random seed for reproducibility
     random.seed(42)
