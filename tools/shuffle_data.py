@@ -119,12 +119,11 @@ if __name__ == "__main__":
     layer = args.layer
     RAW_DATA_DIR = os.path.expanduser("~/data/scaling_law/scaling_law_%s" % layer)
     TRAIN_DIR = os.path.expanduser("~/data/reparke2e_sl/%s/train/" % layer)
-    VAL_DIR = os.path.expanduser("~/data/reparke2e_sl/%s/val/")
+    VAL_DIR = os.path.expanduser("~/data/reparke2e_sl/%s/val/" % layer)
     TEST_DIR = None
 
     TRAIN_RATIO = 0.8
     VAL_RATIO = 0.2
-    # Note: When test_dir is provided, test ratio is computed as 1 - TRAIN_RATIO - VAL_RATIO
 
     COPY_MODE = True
     USE_MULTIPROCESSING = True  # Enable multiprocessing
