@@ -688,7 +688,6 @@ class TrajectoryInfoParser:
         self._get_data()
 
     def _get_data(self):
-        PAD_ROW_VALUE = -300.0
         for each in os.listdir(self.task_path):
             with open(os.path.join(self.task_path, each), 'rb') as f:
                 data = pickle.load(f)
