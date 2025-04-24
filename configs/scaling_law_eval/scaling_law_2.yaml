@@ -40,7 +40,7 @@ num_gpus: 1
 cuda_device_index: "0"
 log_root_dir: '/home/chester.lin/log/'
 checkpoint_root_dir: '/home/chester.lin/checkpoints/'
-log_every_n_steps: 200
+log_every_n_steps: 500
 check_val_every_n_epoch: 1
 epochs: 200
 learning_rate: 0.0002
