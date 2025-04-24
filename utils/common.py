@@ -49,6 +49,9 @@ class ScalingLawCallback(Callback):
 
         # log per-epoch
         pl_module.log('scaling_compute_epoch', C_e, prog_bar=True, on_epoch=True)
+        C_total = sum(self.epoch_compute_values)
+        pl_module.log('scaling_compute_total', C_total)
+
         self.epoch_compute_values.append(C_e)
 
     def on_train_end(self, trainer, pl_module):
@@ -70,6 +73,6 @@ def setup_callbacks(cfg_obj, monitor, mode):
     progress_bar = TQDMProgressBar()
     model_summary = ModelSummary(max_depth=3)
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
-    scaling_law = ScalingLawCallback(cfg_obj.max_frame)
+    scaling_law = ScalingLawCallback()
 
     return [ckpt_callback, progress_bar, model_summary, lr_monitor, scaling_law]
