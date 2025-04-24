@@ -1,14 +1,13 @@
 ##################### Dataset Options #####################
-data_dir: '/home/shaoqian.li/data/'
-# data_dir: '/home/nio/data/e2e_example/'
+data_dir: '/home/shaoqian.li/data/reparke2e_sl/12k'
 training_dir: "train"
 validation_dir: "val"
 multi_agent_info: False
 simple_deduction: True
-with_pad: False
+with_pad: True
 max_train: 5000000
 max_val: 1000000
-experiment_name: e2e_planner
+experiment_name: e2e_planner_scaling_law
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
@@ -43,17 +42,17 @@ log_root_dir: '/home/shaoqian.li/log/'
 checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
 log_every_n_steps: 200
 check_val_every_n_epoch: 1
-epochs: 100
-learning_rate: 0.0005
+epochs: 200
+learning_rate: 0.0002
 weight_decay: 0.0001
 batch_size: 512
 num_workers: 15
 max_agent: 5
-ignore_eos_loss: True
+ignore_eos_loss: False
 device: "cuda"
 customized_metric: True
-ar_start_epoch: 10
-ar_warmup_epochs: 100
+ar_start_epoch: 5
+ar_warmup_epochs: 200
 max_grad_norm: 2.0
 
 ##################### Data Process #####################
@@ -61,12 +60,12 @@ tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
 detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 512
+embedding_dim: 256
 num_topy_layers: 1
 ##################### Decoder #####################
 item_number: 8
 dropout: 0.5
-tf_de_dim: 512
+tf_de_dim: 256
 tf_de_heads: 4
 tf_de_layers: 4
 ##################### Data #####################

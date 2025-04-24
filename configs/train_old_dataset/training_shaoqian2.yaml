@@ -53,7 +53,7 @@ ignore_eos_loss: True
 device: "cuda"
 customized_metric: True
 ar_start_epoch: 10
-ar_warmup_epochs: 100
+ar_warmup_epochs: 200
 max_grad_norm: 2.0
 
 ##################### Data Process #####################
@@ -61,12 +61,12 @@ tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token.npy"
 detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local.json"
 
 ##################### Encoder #####################
-embedding_dim: 256
+embedding_dim: 512
 num_topy_layers: 1
 ##################### Decoder #####################
 item_number: 8
 dropout: 0.5
-tf_de_dim: 256
+tf_de_dim: 512
 tf_de_heads: 4
 tf_de_layers: 4
 ##################### Data #####################
