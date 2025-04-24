@@ -24,36 +24,37 @@ def decorator_function(train_function):
 
 class ScalingLawCallback(Callback):
     """
-    Logs a 'scaling_compute' metric at the end of each training epoch:
-      compute = num_params * tokens_processed * epoch_time
+    1) Logs per-epoch `scaling_compute_epoch`
+    2) At the end, logs a single `scaling_compute_total` = sum of all epochs.
     """
 
-    def __init__(self, seq_len: int):
+    def __init__(self):
         super().__init__()
-        self.seq_len = seq_len
-        self.tokens_processed = 0
-        self.epoch_start_time = 0
+        self.tokens = 0
+        self.epoch_start = None
+        self.epoch_compute_values = []
 
     def on_train_epoch_start(self, trainer, pl_module):
-        # reset counters at the start of each epoch
-        self.epoch_start_time = time.time()
-        self.tokens_processed = 0
+        self.tokens = 0
+        self.epoch_start = time.time()
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        # assume batch is a dict with 'input_tokens' of shape [B, T] or similar
-        # count tokens = batch_size * sequence_length
-        self.tokens_processed += batch['input_ids'].shape[0] * batch['input_ids'].shape[1]
+        B, T = batch['input_ids'].shape[:2]
+        self.tokens += B * T
 
     def on_train_epoch_end(self, trainer, pl_module):
-        epoch_time = time.time() - self.epoch_start_time
-        # total number of model parameters
+        epoch_time = time.time() - self.epoch_start
         num_params = sum(p.numel() for p in pl_module.parameters() if p.requires_grad)
-        compute = num_params * self.tokens_processed * epoch_time
-        # log both to the LightningModule logger and to the progress bar
-        pl_module.log('scaling_compute', compute, prog_bar=True, on_epoch=True, sync_dist=True)
-        print({'scaling_compute': compute})
-        if trainer.logger:
-            trainer.logger.log_metrics({'scaling_compute': compute}, step=trainer.current_epoch)
+        C_e = num_params * self.tokens * epoch_time
+
+        # log per-epoch
+        pl_module.log('scaling_compute_epoch', C_e, prog_bar=True, on_epoch=True)
+        self.epoch_compute_values.append(C_e)
+
+    def on_train_end(self, trainer, pl_module):
+        C_total = sum(self.epoch_compute_values)
+        pl_module.log('scaling_compute_total', C_total)
+        print(f"\n>>> Total scaling_compute: {C_total:.3e}")
 
 
 def setup_callbacks(cfg_obj, monitor, mode):
