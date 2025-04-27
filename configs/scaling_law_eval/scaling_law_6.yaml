@@ -46,7 +46,7 @@ check_val_every_n_epoch: 1
 epochs: 200
 learning_rate: 0.0002
 weight_decay: 0.0001
-batch_size: 512
+batch_size: 128
 num_workers: 15
 max_agent: 5
 ignore_eos_loss: False
