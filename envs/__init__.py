@@ -97,6 +97,14 @@ class ReplayHighwayEnv(AbstractEnv):
         pkl = random.sample(os.listdir(os.path.join(self.task_paths, task)), 1)[0]
         with open(os.path.join(self.task_paths, task, pkl), 'rb') as f:
             self.data_info = pickle.load(f)
+            self.ego_feature = self.data_info['ego_history_feature'][:, 1:][::-1]
+            pos_bias = self.ego_feature[0][1:3].copy()
+            self.ego_feature[:, 1:3] -= pos_bias
+            end_t = round(self.ego_feature[0, 6].copy(), 1)
+            self.ego_feature[:, 6] = np.round(end_t - self.ego_feature[:, 6], 1)
+
+            for idx in range(len(self.data_info['agent_feature'])):
+                self.data_info['agent_feature'][idx] = self.data_info['agent_feature'][idx][::-1]
             agent_feature = pd.DataFrame(self.data_info['agent_feature'].reshape([-1, 8]),
                                          columns=["_", "aid", "x", "y", "heading", "v", "acc", "timestamp"])
 
@@ -105,11 +113,15 @@ class ReplayHighwayEnv(AbstractEnv):
                                                             "virtual", "key_smooth_future"])
 
             agent_feature = pd.merge(agent_feature, agent_attribute_feature, on="aid")
+            agent_feature[['x', 'y']] = agent_feature[['x', 'y']].values - pos_bias
+            agent_feature['timestamp'] = np.round(end_t - agent_feature['timestamp'], 1)
             self.agent_feature = agent_feature[["aid", "x", "y",
                                                 "heading", "v", "acc", "length", "width", "type", "timestamp"]]
             self.agent_feature = self.agent_feature[self.agent_feature.aid != -300].reset_index(drop=True)
-            self.vector_graph_feature = self.data_info['vector_graph_feature']
-            self.ego_feature = self.data_info['ego_history_feature'][:, 1:]
+
+            self.vector_graph_feature = self.data_info['vector_graph_feature'][::-1]
+            self.vector_graph_feature[:, :, 0:2] -= pos_bias
+            self.vector_graph_feature[:, :, 2:4] -= pos_bias
 
     def _make_road(self):
         """
