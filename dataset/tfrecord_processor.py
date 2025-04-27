@@ -15,6 +15,7 @@ import tensorflow as tf
 import yaml
 from utils.config import Configuration
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -336,37 +337,39 @@ class TFRecordProcessor:
         """
         file_list = self.list_objects()
 
+        if not os.path.exists(self.local_data_save_dir):
+            os.makedirs(self.local_data_save_dir)
         exist_count = len(os.listdir(self.local_data_save_dir))
         print(f"The number of valid cases is {exist_count}")
 
-        if not os.path.exists(self.local_data_save_dir):
-            os.makedirs(self.local_data_save_dir)
         existing_case_ids = {
             d.name for d in Path(self.local_data_save_dir).iterdir() if d.is_dir()
         }
         filtered_files = [f for f in file_list
                           if Path(f).parts[-2] not in existing_case_ids]
-        pbar = tqdm(total=min(len(filtered_files), self.case_size - exist_count),
-                    desc="Processing cases", unit="case")
 
-        for file in filtered_files:
-            # Update progress bar based on the current number of files in local_data_save_dir
-            current_count = len(os.listdir(self.local_data_save_dir))
-            pbar.n = current_count - exist_count
-            pbar.refresh()
-            if current_count >= self.case_size:
-                pbar.close()
-                print("Reached case size limit. Exiting loop.")
-                break
+        max_to_process = max(self.case_size - exist_count, 0)
+        files_to_process = filtered_files[:max_to_process]
 
-            # Extract case_id from the file path (second last path component)
-            case_id = file.split(" ")[0].split("/")[-2]
-            record_local_path = self.save_niofs_file_to_local(file, case_id)
+        pbar = tqdm(total=len(files_to_process), desc="Processing cases", unit="case")
+
+        def process_file(file_entry: str):
+            case_id = file_entry.split(" ")[0].split("/")[-2]
+            record_local_path = self.save_niofs_file_to_local(file_entry, case_id)
             if record_local_path is None:
-                continue
+                pbar.update(1)
+                return
+
             raw_data = self.get_data(record_local_path)
             self.clean_tmp_data(record_local_path)
             self.save_data_(raw_data, record_local_path)
+
+            pbar.update(1)
+
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            executor.map(process_file, files_to_process)
+
+        pbar.close()
 
 
 if __name__ == '__main__':
