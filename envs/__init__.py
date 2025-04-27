@@ -8,7 +8,6 @@ from collections import defaultdict
 from highway_env.envs.common.abstract import Observation
 from highway_env.envs.common.action import Action
 from highway_env.envs.common.abstract import AbstractEnv
-from highway_env.utils import Vector
 from highway_env.road.road import Road, RoadNetwork, LineType
 from highway_env.road.lane import PolyLaneFixedWidth
 from highway_env.vehicle.kinematics import Vehicle
@@ -28,6 +27,7 @@ class ReplayHighwayEnv(AbstractEnv):
             # tuning:
             "simulation_frequency": 15,
             "policy_frequency": 1,
+            "offscreen_rendering": False,
         }
         self.agent_feature = None
         self.vector_graph_feature = None
@@ -52,18 +52,22 @@ class ReplayHighwayEnv(AbstractEnv):
 
         return obs, info
 
+    def get_current_obs(self):
+        pass
+
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
-        # 1) step ego + traffic model
-        obs, reward, terminated, truncated, info = super().step(action)
-
-        # 2) bump our timestep
-        self.t += 1
-
-        # 3) overwrite every other vehicle from the replay buffer
-        # self._apply_frame(self.t)
-
-        # (we leave collision/reward as-is for now)
-        return obs, reward, terminated, truncated, info
+        # # 1) step ego + traffic model
+        # obs, reward, terminated, truncated, info = super().step(action)
+        #
+        # # 2) bump our timestep
+        # self.t += 1
+        #
+        # # 3) overwrite every other vehicle from the replay buffer
+        # # self._apply_frame(self.t)
+        #
+        # # (we leave collision/reward as-is for now)
+        # return obs, reward, terminated, truncated, info
+        pass
 
     def _apply_frame(self, t: int):
         """
@@ -105,7 +109,7 @@ class ReplayHighwayEnv(AbstractEnv):
                                                 "heading", "v", "acc", "length", "width", "type", "timestamp"]]
             self.agent_feature = self.agent_feature[self.agent_feature.aid != -300].reset_index(drop=True)
             self.vector_graph_feature = self.data_info['vector_graph_feature']
-            self.ego_feature = self.data_info['ego_history_feature']
+            self.ego_feature = self.data_info['ego_history_feature'][:, 1:]
 
     def _make_road(self):
         """
@@ -141,8 +145,8 @@ class ReplayHighwayEnv(AbstractEnv):
                 )
                 # use the same id for from/to so it’s one continuous road
                 network.add_lane(str(road_id), str(road_id), lane)
-
-        agent_groups = self.agent_feature.groupby("aid")
+        agent_feature = self.agent_feature[self.agent_feature["timestamp"] == 0]
+        agent_groups = agent_feature.groupby("aid")
         for aid, df in agent_groups:
             agent_start_loc = df.sort_values("timestamp").iloc[0]
             position = [float(agent_start_loc["x"]), float(agent_start_loc["y"])]
@@ -150,24 +154,25 @@ class ReplayHighwayEnv(AbstractEnv):
                 agent = Vehicle(self.road, position=position,
                                 heading=float(agent_start_loc["heading"]),
                                 speed=float(agent_start_loc["v"]))
-                self.ego = agent
                 agent.color = (255, 255, 255)
+                agent.LENGTH = float(agent_start_loc["length"])
+                agent.WIDTH = float(agent_start_loc["width"])
+                agent.t = agent_start_loc["timestamp"]
+                self.ego = agent
             else:
-                if agent_start_loc["timestamp"] == 0:
-                    if agent_start_loc["type"] == 791621440:
-                        agent = Vehicle(self.road, position=position)
-                        agent.color = (120, 50, 9)
-                    else:
-                        agent = Obstacle(self.road, position=position)
-                        agent.color = (0, 0, 0)
+                if agent_start_loc["type"] == 791621440:
+                    agent = Vehicle(self.road, position=position)
+                    agent.color = (120, 50, 9)
                 else:
-                    continue
-            agent.LENGTH = float(agent_start_loc["length"])
-            agent.WIDTH = float(agent_start_loc["width"])
-            self.all_agents[aid] = agent
+                    agent = Obstacle(self.road, position=position)
+                    agent.color = (0, 0, 0)
+                agent.LENGTH = float(agent_start_loc["length"])
+                agent.WIDTH = float(agent_start_loc["width"])
+                agent.t = agent_start_loc["timestamp"]
+                self.all_agents[aid] = agent
         self.road = Road(
             network,
-            vehicles=list(self.all_agents.values()),
-            np_random=self.np_random,
-            record_history=self.config["show_trajectories"]
+            vehicles=[self.ego] + list(self.all_agents.values()),
+            record_history=False
         )
+        print(self.agent_feature[self.agent_feature.timestamp == 0.0].shape[0], len(self.road.vehicles))
