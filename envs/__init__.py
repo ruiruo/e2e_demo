@@ -11,14 +11,14 @@ from highway_env.envs.common.abstract import AbstractEnv
 from highway_env.road.road import Road, RoadNetwork, LineType
 from highway_env.road.lane import PolyLaneFixedWidth
 from highway_env.vehicle.kinematics import Vehicle
-from highway_env.vehicle.objects import Obstacle
+from highway_env.vehicle.objects import Obstacle, Landmark
 
 
 class ReplayHighwayEnv(AbstractEnv):
     def __init__(self,
-                 task_paths: str):
+                 task_paths: str, configs: dict):
         self.task_paths = task_paths
-        config = {
+        highway_config = {
             # where to pick up your pickles:
             "task_paths": None,
             # visuals:
@@ -29,22 +29,28 @@ class ReplayHighwayEnv(AbstractEnv):
             "policy_frequency": 1,
             "offscreen_rendering": False,
         }
+        self.x_max = configs["x_max"]
+        self.x_min = configs["x_min"]
+        self.y_max = configs["y_max"]
+        self.y_min = configs["y_min"]
+
         self.agent_feature = None
         self.vector_graph_feature = None
         self.ego_feature = None
         self.ego = None
         self.all_agents = {}
         self.t = 0
-        super().__init__(config, render_mode="rgb_array")
+        super().__init__(highway_config, render_mode="rgb_array")
         self.action_space = spaces.Discrete(5)
 
     def reset(self, *, seed=None, options=None):
         # 1) pick & load a new episode
+        self.all_agents.clear()
         self._read_file()
         self._make_road()
         # 2) do HighwayEnv’s normal reset (builds self.road & self.vehicles)
         obs = None
-        info = None
+        info = {"image": self.render()}
 
         # 3) place all other cars at frame 0
         self.t = 0
@@ -55,39 +61,57 @@ class ReplayHighwayEnv(AbstractEnv):
     def get_current_obs(self):
         pass
 
+    def move_ego(self):
+        pass
+
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
+        obs, reward, terminated, truncated, info = None, None, None, None, {"image": self.render()}
         # # 1) step ego + traffic model
         # obs, reward, terminated, truncated, info = super().step(action)
         #
         # # 2) bump our timestep
-        # self.t += 1
+        self.t += 0.2
         #
         # # 3) overwrite every other vehicle from the replay buffer
-        # # self._apply_frame(self.t)
+        self._apply_background(self.t)
         #
         # # (we leave collision/reward as-is for now)
-        # return obs, reward, terminated, truncated, info
-        pass
+        if round(self.t, 0) >= 20 or ():
+            terminated = True
+        return obs, reward, terminated, truncated, info
 
-    def _apply_frame(self, t: int):
+    def _apply_background(self, t):
         """
-        Overwrite all non-ego vehicles in self.road.vehicles[1:]
-        using your loaded `agent_feature` and `agent_attribute_feature`.
+        Overwrite all other vehicles’ states (position, heading, speed, acc)
+        from self.agent_feature at the current timestamp self.t.
+        Assumes:
+          - self.agent_feature is a DataFrame with columns
+            ['aid','x','y','heading','v','acc',…,'timestamp']
+          - self.all_agents maps aid→Vehicle or Obstacle (ego is aid=0)
         """
-        for i, veh in enumerate(self.road.vehicles[1:], start=0):
-            print(veh)
-            # feat = self.agent_feature[i, t]  # [id, x, y, heading, v, acc, Δt]
-            # attr = self.agent_attribute_feature[i]  # [length, width, type, is_virtual, ...]
-            # # position + heading + dynamics
-            # veh.position = [float(feat[1]), float(feat[2])]
-            # veh.heading = float(feat[3])
-            # # veh.velocity = float(feat[4])
-            # # veh.acceleration = float(feat[5])
-            # # physical shape & type
-            # veh.length = float(attr[0])
-            # veh.width = float(attr[1])
-            # veh.TYPE = int(attr[2])
-            # veh.is_virtual = bool(attr[3])
+        # round self.t to match the timestamp column’s precision
+        # select rows for this time
+        df_t = self.agent_feature[self.agent_feature['timestamp'] == t]
+
+        for _, row in df_t.iterrows():
+            aid = row['aid']
+            # skip ego (we handle ego by stepping the env normally)
+            # if aid == 0:
+            #     continue
+            veh = self.all_agents.get(aid)
+            if veh is None:
+                continue
+
+            # update position
+            veh.position = np.array([row['x'], row['y']])
+
+            # update kinematic state
+            veh.heading = float(row['heading'])
+            veh.speed = float(row['v'])
+            # if your Vehicle/Obstacle class has an acceleration attr:
+            if hasattr(veh, 'acceleration'):
+                veh.acceleration = float(row['acc'])
+            veh.t += t
 
     def _reward(self, action):
         return 0
@@ -102,6 +126,12 @@ class ReplayHighwayEnv(AbstractEnv):
             self.ego_feature[:, 1:3] -= pos_bias
             end_t = round(self.ego_feature[0, 6].copy(), 1)
             self.ego_feature[:, 6] = np.round(end_t - self.ego_feature[:, 6], 1)
+            self.ego_feature = pd.DataFrame(self.ego_feature[:, 1:],
+                                            columns=['x', 'y', 'heading', 'v', 'acc', 'timestamp'])
+            self.ego_feature = self.ego_feature[(self.ego_feature.x < self.x_max) &
+                                                (self.ego_feature.x > self.x_min) &
+                                                (self.ego_feature.y < self.y_max) &
+                                                (self.ego_feature.y > self.y_min)]
 
             for idx in range(len(self.data_info['agent_feature'])):
                 self.data_info['agent_feature'][idx] = self.data_info['agent_feature'][idx][::-1]
@@ -116,12 +146,14 @@ class ReplayHighwayEnv(AbstractEnv):
             agent_feature[['x', 'y']] = agent_feature[['x', 'y']].values - pos_bias
             agent_feature['timestamp'] = np.round(end_t - agent_feature['timestamp'], 1)
             self.agent_feature = agent_feature[["aid", "x", "y",
-                                                "heading", "v", "acc", "length", "width", "type", "timestamp"]]
+                                                "heading", "v", "acc", "length", "width", "type", "timestamp",
+                                                "virtual"]]
             self.agent_feature = self.agent_feature[self.agent_feature.aid != -300].reset_index(drop=True)
 
             self.vector_graph_feature = self.data_info['vector_graph_feature'][::-1]
             self.vector_graph_feature[:, :, 0:2] -= pos_bias
             self.vector_graph_feature[:, :, 2:4] -= pos_bias
+            self.ego_goal = self.ego_feature.sort_values('timestamp').iloc[-1]
 
     def _make_road(self):
         """
@@ -171,6 +203,8 @@ class ReplayHighwayEnv(AbstractEnv):
                 agent.WIDTH = float(agent_start_loc["width"])
                 agent.t = agent_start_loc["timestamp"]
                 self.ego = agent
+                # remove after display
+                self.all_agents[aid] = agent
             else:
                 if agent_start_loc["type"] == 791621440:
                     agent = Vehicle(self.road, position=position)
@@ -185,6 +219,12 @@ class ReplayHighwayEnv(AbstractEnv):
         self.road = Road(
             network,
             vehicles=[self.ego] + list(self.all_agents.values()),
-            record_history=False
+            record_history=False,
         )
+        goal_pos = [float(self.ego_goal['x']), float(self.ego_goal['y'])]
+        goal_marker = Landmark(self.road, position=goal_pos)
+        goal_marker.color = (0, 255, 0)       # bright green, for example
+        goal_marker.LENGTH = 3.0              # make it small
+        goal_marker.WIDTH  = 3.0
+        self.road.objects.append(goal_marker)
         print(self.agent_feature[self.agent_feature.timestamp == 0.0].shape[0], len(self.road.vehicles))
