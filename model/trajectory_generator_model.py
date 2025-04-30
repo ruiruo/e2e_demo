@@ -8,57 +8,55 @@ class TrajectoryGenerator(nn.Module):
     def __init__(self, cfg: Configuration):
         super().__init__()
         self.cfg = cfg
-        # Embedding for tokens (inputs, outputs, etc.)
+        # ─────────────────────── Embeddings ────────────────────────
         self.token_embedding = nn.Embedding(
-            num_embeddings=self.cfg.token_nums,
-            embedding_dim=self.cfg.embedding_dim,
-            padding_idx=self.cfg.pad_token
+            num_embeddings=cfg.token_nums,
+            embedding_dim=cfg.embedding_dim,
+            padding_idx=cfg.pad_token,
         )
+
         # Encoder
-        # Self-state encoder: uses StateEncoder to fuse the vehicle's own info
-        # (heading, speed, acc) into the token embedding
+        # ───────────────────── State & Context Encoders ─────────────
         self.self_state_encoder = StateEncoder(
-            pos_dim=self.cfg.embedding_dim,
-            feat_dim=3
+            pos_dim=cfg.embedding_dim,
+            feat_dim=3,  # (heading, speed, acc)
         )
-        # Background encoder: uses BackgroundEncoder to handle multiple agents + final goal
+
+        # agent  features: heading, v, acc, length, width (+ optional dists) → feat_dim = 5
         self.background_encoder = BackgroundEncoder(
-            pos_embed_dim=self.cfg.embedding_dim,
-            pad_token=self.cfg.pad_token,
-            feat_dim=5,  # features: (heading, v, acc, length, width, abs_dis, hit_dis)
+            pos_embed_dim=cfg.embedding_dim,
+            pad_token=cfg.pad_token,
+            feat_dim=5,
             abs_dis_local=5,
-            dropout=self.cfg.dropout,
-            num_layers=self.cfg.num_topy_layers
+            dropout=cfg.dropout,
+            num_layers=cfg.num_topy_layers,
         )
-        # Decoder
+
+        # ───────────────────────── Decoder ──────────────────────────
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=self.cfg.embedding_dim,
-            nhead=self.cfg.tf_de_heads,
-            dim_feedforward=self.cfg.tf_de_dim,
-            dropout=self.cfg.dropout,
-            activation='relu'
+            d_model=cfg.embedding_dim,
+            nhead=cfg.tf_de_heads,
+            dim_feedforward=cfg.tf_de_dim,
+            dropout=cfg.dropout,
+            activation="relu",
         )
-        self.trajectory_gen = nn.TransformerDecoder(decoder_layer, num_layers=self.cfg.tf_de_layers)
-        # Projection from decoder hidden states to location vocabulary
-        self.output_projection = nn.Linear(
-            self.cfg.embedding_dim,
-            self.cfg.token_nums
+        self.trajectory_gen = nn.TransformerDecoder(
+            decoder_layer, num_layers=cfg.tf_de_layers
         )
+        self.output_projection = nn.Linear(cfg.embedding_dim, cfg.token_nums)
 
-        self.input_norm = nn.LayerNorm(self.cfg.embedding_dim)
-        self.memory_norm = nn.LayerNorm(self.cfg.embedding_dim)
-        self.output_norm = nn.LayerNorm(self.cfg.embedding_dim)
+        # ─────────────── Normalisation helpers ─────────────────────
+        self.input_norm = nn.LayerNorm(cfg.embedding_dim)
+        self.memory_norm = nn.LayerNorm(cfg.embedding_dim)
+        self.output_norm = nn.LayerNorm(cfg.embedding_dim)
 
-    # Encoder parts
+    # ===============================================================
+    #                         Encoder
+    # ===============================================================
     def encoder(self, data):
-        """
-          1) self_state (Q): (B, L, embed)
-          2) env_state  (K, V): (B, T, S+1, embed)
-        """
+        """Return self‑state (B,L,D) and env‑state (B,T,S+1,D)."""
         self_state = self.encode_self_state(data)
-
         env_state = self.encode_agent_topology(data)
-
         return self_state, env_state
 
     def encode_self_state(self, data):
@@ -81,13 +79,10 @@ class TrajectoryGenerator(nn.Module):
         input_embedding = self.token_embedding(input_ids)  # (B*L, embed)
 
         # ego_info: (B, 3) -> replicate for L steps => (B, L, 3) -> (B*L, 3)
-        ego_info = data['ego_info'].to(self.cfg.device, non_blocking=True).unsqueeze(1)
-        ego_info = ego_info.repeat(1, l, 1).reshape(b * l, -1)
-
-        # StateEncoder (DyT style): fuse input_embedding & ego_info
-        fused = self.self_state_encoder(input_embedding, ego_info)
-
-        return self.input_norm(fused.view(b, l, -1))
+        ego = data["ego_info"].to(self.cfg.device, non_blocking=True)
+        ego = ego.unsqueeze(1).repeat(1, l, 1).reshape(b * l, -1)
+        fused = self.self_state_encoder(input_embedding, ego)  # (B*L,D)
+        return self.input_norm(fused.view(b, l, -1))  # (B,L,D)
 
     def encode_agent_topology(self, data):
         """
@@ -136,15 +131,12 @@ class TrajectoryGenerator(nn.Module):
         return self.memory_norm(background_state)
 
     # Decoder parts
-    def create_mask(self, seq_len):
+    def causal_mask(self, seq_len):
         """
         Create a causal (auto-regressive) mask of shape (seq_len, seq_len).
         Upper-triangular entries are True => future positions are masked.
         """
-        mask = torch.triu(
-            torch.ones(seq_len, seq_len, device=self.cfg.device), diagonal=1
-        ).bool()
-        return mask
+        return torch.triu(torch.ones(seq_len, seq_len, device=self.cfg.device), diagonal=1).bool()
 
     def decoder(self, tgt_emb, memory, tgt_mask=None, tgt_kp_mask=None):
         """
@@ -153,50 +145,46 @@ class TrajectoryGenerator(nn.Module):
           2) cross-attention on memory
         Return logits of vocab => (tgt seq len, batch size, vocab size)
         """
-        dec_out = self.trajectory_gen(
+        dec = self.trajectory_gen(
             tgt=tgt_emb,
             memory=memory,
             tgt_mask=tgt_mask,
-            tgt_key_padding_mask=tgt_kp_mask
+            tgt_key_padding_mask=tgt_kp_mask,
         )
-        dec_out = self.output_norm(dec_out)
-        return self.output_projection(dec_out)
+        return self.output_projection(self.output_norm(dec))
 
+    # ===============================================================
+    #                             Forward (Teacher‑Forcing)
+    # ===============================================================
     def forward(self, data):
-        # data = {"input_ids", "labels", "agent_info", "ego_info", "goal"}
-        # input_ids   ; (bz, sl)                   ; [bz, (BOS,...... TN) token]
-        # labels      ; (bz, sl)                   ; [bz, (T0,...... EOS) token]
-        # agent_info  ; (bz, sl, n_agent, f_agent) ; [bz, sl, n_agent, (features)]
-        # ego_info    ; (bz, f_ego)                   ; [bz, (heading, v, acc)]
-        # goal        ; (bz, 1)
-        bz, length = data["input_ids"].shape
-        tgt_kp_mask = (data["input_ids"] == self.cfg.pad_token).to(self.cfg.device)
-        causal_mask = self.create_mask(length).to(self.cfg.device)
+        """Teacher‑forcing forward pass *without* future leakage."""
+        bz, T = data["input_ids"].shape
+        kp_full = (data["input_ids"] == self.cfg.pad_token).to(self.cfg.device)
 
-        # Q, KV
-        self_state, env_state = self.encoder(data)
-        bz, t, num_agents, dim_agents = env_state.shape
-        env_state = env_state.permute(1, 0, 2, 3)
-        mem = [self.get_env_window_around_t(env_state, i) for i in range(t)]
-        mem = torch.concatenate([torch.unsqueeze(i, 0) for i in mem], dim=0)
+        self_state, env_state = self.encoder(data)  # self: (B,L,D) env: (B,T,S+1,D)
+        rep_env = env_state.permute(1, 0, 2, 3)  # (T,B,A,D) for window extraction
 
-        mem = mem.reshape(t * num_agents * 3, bz, dim_agents)  # [t, agent * 3, bz, dim]
+        logits_step = []
+        for t in range(1, T):  # last label is EOS → no need to predict
+            tgt_len = t + 1
+            tgt_emb = self_state[:, :tgt_len, :].transpose(0, 1)  # (tgt_len, B, D)
+            tgt_kpm = kp_full[:, :tgt_len]  # (B, tgt_len)
+            mem = self.get_env_window_around_t(rep_env, t)  # (3A,B,D)
+            dec_out = self.decoder(
+                tgt_emb=tgt_emb,
+                memory=mem,
+                tgt_mask=self.causal_mask(t + 1),
+                tgt_kp_mask=tgt_kpm,
+            )
+            logits_step.append(dec_out[-1])  # only newest position
 
-        tgt = self_state.transpose(0, 1)  # [t, bz, dim]
+        pred_logits = torch.stack(logits_step, dim=1)  # (B,T-1,V)
+        return pred_logits, self_state, rep_env
 
-        # cross attention
-        pred_logits = self.decoder(
-            tgt_emb=tgt,
-            memory=mem,
-            tgt_mask=causal_mask,
-            tgt_kp_mask=tgt_kp_mask
-        )
-
-        # (bz, length, vocab)
-        pred_logits = pred_logits.transpose(0, 1)
-        return pred_logits, self_state, env_state
-
-    def predict(self, data, predict_token_num=10, with_logits=False):
+    # ===============================================================
+    #                      Autoregressive Predict
+    # ===============================================================
+    def predict(self, data, predict_token_num: int = 10, with_logits=False):
         """
         Autoregressive generate tokens for 'predict_token_num' steps,
         BUT ALSO store the per-step logits (before argmax).
@@ -205,86 +193,63 @@ class TrajectoryGenerator(nn.Module):
             generated_tokens: (B, predict_token_num) discrete tokens (argmax)
             all_step_logits:  (B, predict_token_num, vocab_size) raw logits at each step
         """
-        bz, length = data["input_ids"].shape
-
+        bz, _ = data["input_ids"].shape
         # 1) Encode to get self_state, env_state
         self_state, env_state = self.encoder(data)
 
-        env_state = env_state.permute(1, 0, 2, 3)
-        bz, timer, n_agent, _ = data["agent_info"].shape  # n_agent real agents
-        goal_pad = torch.zeros((bz, timer, 1),  # goal is always valid
-                               dtype=torch.bool,
-                               device=self.cfg.device)
-
-        agent_pad = (data["agent_info"][..., 0] == self.cfg.pad_token)  # (B,T,S)
-        mem_kpm_base = torch.cat([agent_pad, goal_pad], dim=2)  # (B,T,S+1)
-
-        # repeat each frame three times (t‑1, t, t+1) and flatten
-        mem_kpm_base = mem_kpm_base.repeat_interleave(3, dim=2)  # (B,T,3*(S+1))
+        rep_env = env_state.permute(1, 0, 2, 3)
 
         # 2) Extract velocity embedding => shape (B,1,D)
-        start_emb = self_state[:, 0, :].unsqueeze(1)
-
-        # (B,0) => empty
-        generated_tokens = torch.empty((bz, 0), dtype=torch.long, device=self.cfg.device)
-        all_step_logits = torch.zeros(
-            (bz, predict_token_num, self.cfg.token_nums), device=self.cfg.device
-        )
+        start_emb = self_state[:, 0, :].unsqueeze(1)  # (B,1,D)
+        generated  = torch.empty(bz, 0, dtype=torch.long, device=self.cfg.device)
+        all_logits = torch.zeros(bz, predict_token_num, self.cfg.token_nums, device=self.cfg.device)
 
         # 3) Loop for each decoding step
-        for step_i in range(predict_token_num):
+        for step in range(predict_token_num):
             # a) Build partial_emb = [start_emb] + embeddings of previously generated tokens
-            if generated_tokens.size(1) > 0:
-                prev_token_emb = self.token_embedding(generated_tokens)
+            if generated.size(1):
+                past_emb = self.token_embedding(generated)
                 # cat along seq_len => (B, 1 + #sofar, D)
-                partial_emb = torch.cat([start_emb, prev_token_emb], dim=1)
+                partial_emb = torch.cat([start_emb, past_emb], dim=1)
             else:
                 # if no tokens generated yet, partial_emb = velocity alone
                 partial_emb = start_emb
-
             # b) transpose => (seq_len, B, D)
-            partial_emb_tbd = partial_emb.transpose(0, 1)  # shape => (#seq, B, D)
+            partial_emb_tbd = partial_emb.transpose(0, 1)
 
             # c) Get environment "memory" (3 frames around t = step_i)
-            mem = self.get_env_window_around_t(env_state, step_i)  # (3*A, B, D)
-            mem_kpm = self._get_mem_mask_around_t(mem_kpm_base, step_i)
+            mem = self.get_env_window_around_t(rep_env, step)  # (3A,B,D)
 
             # d) Causal mask
-            causal_mask = self.create_mask(partial_emb_tbd.size(0))
+            causal_mask = self.causal_mask(partial_emb_tbd.size(0))
 
             # e) Decode
             dec_out = self.trajectory_gen(
                 tgt=partial_emb_tbd,
                 memory=mem,
                 tgt_mask=causal_mask,
-                tgt_key_padding_mask=None,
-                memory_key_padding_mask=mem_kpm
             )
 
             # f) Project to vocab => (seq_len, B, vocab)
             logits = self.output_projection(dec_out)
 
             # g) take the last position => (B, vocab size)
-            next_token_logits = logits[-1, :, :]
+            next_logits = logits[-1]
 
             # h) Greedy argmax => (B, 1)
-            next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+            next_token = torch.argmax(next_logits, dim=-1, keepdim=True)
 
             # i) Append to outputs
-            generated_tokens = torch.cat([generated_tokens, next_token], dim=1)
+            generated = torch.cat([generated, next_token], dim=1)
 
-            all_step_logits[:, step_i, :] = next_token_logits
+            all_logits[:, step, :] = next_logits
 
-        # shape:
-        #   generated_tokens => (B, predict_token_num)
-        #   all_step_logits  => (B, predict_token_num, vocab)
-        if with_logits:
-            return generated_tokens, all_step_logits
-        else:
-            return generated_tokens
+        return (generated, all_logits) if with_logits else generated
 
+
+    # ---------------------------------------------------------------
     @staticmethod
-    def get_env_window_around_t(rep_env, t):
+    def get_env_window_around_t(rep_env: torch.Tensor, t: int):
         """
         rep_env: (T, B, A, D)
           - T: total time steps
@@ -295,26 +260,16 @@ class TrajectoryGenerator(nn.Module):
         Returns a memory tensor of shape (some_len, B, D),
         where some_len = (#frames_in_window * A).
 
-        Slices frames [t-1, t, t+1] with boundary checks,
+        Slices frames [t-2, t-1, t] with boundary checks,
         then flattens agent dimension and transposes to
         (some_len, B, D).
         """
-        timestamp, bz, agent, dim = rep_env.shape
+        T, B, A, D = rep_env.shape
+        ids = [max(0, min(T - 1, t + off)) for off in (-2, -1, 0)]
+        frames = [rep_env[i] for i in ids]                # each (B,A,D)
+        cat = torch.cat(frames, dim=1).transpose(0, 1)     # (3A,B,D)
+        return cat
 
-        # List of frames (B, A, D)
-        frames_list = []
-        for offset in [-1, 0, 1]:
-            # clamp
-            i_clamped = max(0, min(timestamp - 1, t + offset))
-            # shape => (B, A, D)
-            frames_list.append(rep_env[i_clamped])
-
-        # Concatenate along agent/time dimension => shape (B, #frames*A, D)
-        frames_cat = torch.cat(frames_list, dim=1)
-
-        # Transpose to ( #frames*A, B, D ), the standard shape for cross-attention
-        frames_cat = frames_cat.transpose(0, 1)
-        return frames_cat
 
     @staticmethod
     def _get_mem_mask_around_t(mask_base, t):

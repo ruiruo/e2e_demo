@@ -90,13 +90,14 @@ class ReplayHighwayEnv(AbstractEnv):
             self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
                                                                   self.x_boundaries, self.y_boundaries,
                                                                   self.local2token)[0]))
-        # agent_info = TopologyHistory(self.pre_train_config, 0,
-        #                              feature={
-        #                                  "ego_history_feature": self.ego_input_ids[-3:],
-        #                                  "agent_feature": agent_window,
-        #                                  "agent_attribute_feature": data["agent_attribute_feature"]
-        #                              },
-        #                              )
+
+        agent_info = TopologyHistory(self.pre_train_config, 0,
+                                     feature={
+                                         "ego_history_feature": self.ego_input_ids[-3:],
+                                         "agent_feature": agent_window,
+                                         "agent_attribute_feature": data["agent_attribute_feature"]
+                                     },
+                                     )
 
         #
         # for aid, veh in self.all_agents.items():

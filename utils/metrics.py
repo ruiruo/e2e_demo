@@ -1,54 +1,88 @@
+from __future__ import annotations
+
+import json
+from typing import Dict, List, Tuple
+
 import numpy as np
 import torch
-import json
+
 from utils.config import Configuration
 from utils.trajectory_utils import TrajectoryDistance, detokenize_traj_waypoints
 
 
 class TrajectoryGeneratorMetric:
-    def __init__(self, cfg: Configuration) -> None:
+    """Compute distance metrics between predicted & GT token trajectories.
+
+    Handles variable‑length detokenized polylines by **length‑aligning** the two
+    sequences before feeding them into `TrajectoryDistance`.
+    """
+
+    def __init__(self, cfg: Configuration):
         self.cfg = cfg
         with open(self.cfg.detokenizer, "r") as f:
             self.detokenizer = json.load(f)
 
-    def calculate_distance(self, pred_traj_waypoints, true_traj_waypoints):
-        distance_dict = {}
-        _prediction_waypoints = self.get_hp_predict_waypoints(pred_traj_waypoints)
-        _gt_waypoints = self.get_hp_waypoints(true_traj_waypoints)
-        gt_prediction_waypoints_np = []
-        gt_waypoints_np = []
-        for index in range(self.cfg.batch_size):
-            gt_prediction_waypoints_np.append(self.get_valid_np_waypoints(_prediction_waypoints[index]))
-            gt_waypoints_np.append(self.get_valid_np_waypoints(_gt_waypoints[index]))
-        l2_list, haus_list, fourier_difference = [], [], []
-        for index in range(self.cfg.batch_size):
-            distance_obj = TrajectoryDistance(gt_prediction_waypoints_np[index], gt_waypoints_np[index])
-            if distance_obj.get_len() < 1:
-                # If you need at least two points to compute meaningful distances, skip
+    def calculate_distance(
+        self,
+        pred_tokens: torch.Tensor,  # (B,T,V) logits **or** (B,T) tokens
+        true_tokens: torch.Tensor,  # (B,T)
+    ) -> Dict[str, float]:
+        """Return averaged L2 / Hausdorff / Fourier distances (if computable)."""
+
+        # 0. ensure CPU numpy for heavy ops
+        pred_waypoints = self._tokens_to_np(pred_tokens)  # List[np.ndarray]
+        gt_waypoints = self._tokens_to_np(true_tokens)    # List[np.ndarray]
+
+        assert len(pred_waypoints) == len(gt_waypoints)
+        l2_vals, haus_vals, fourier_vals = [], [], []
+
+        for p_xy, t_xy in zip(pred_waypoints, gt_waypoints):
+            # 1. align lengths (TrajectoryDistance expects equal length)
+            p_xy, t_xy = self._align_lengths(p_xy, t_xy)
+            if p_xy.size == 0:
                 continue
-            l2_list.append(distance_obj.get_l2_distance())
-            if distance_obj.get_len() > 1:
-                haus_list.append(distance_obj.get_haus_distance())
-                fourier_difference.append(distance_obj.get_fourier_difference())
-        if len(l2_list) > 0:
-            distance_dict.update({"L2_distance": float(np.mean(l2_list))})
-        if len(haus_list) > 0:
-            distance_dict.update({"hausdorff_distance": float(np.mean(haus_list))})
-        if len(fourier_difference) > 0:
-            distance_dict.update({"fourier_difference": float(np.mean(fourier_difference))})
-        return distance_dict
 
-    def get_valid_np_waypoints(self, torch_waypoints):
-        np_waypoints_valid_detoken = detokenize_traj_waypoints(torch_waypoints, self.detokenizer,
-                                                               self.cfg.bos_token,
-                                                               self.cfg.eos_token,
-                                                               self.cfg.pad_token)
-        return np_waypoints_valid_detoken
+            dist_obj = TrajectoryDistance(p_xy, t_xy)
+            l2_vals.append(dist_obj.get_l2_distance())
+            if dist_obj.get_len() > 1:
+                haus_vals.append(dist_obj.get_haus_distance())
+                fourier_vals.append(dist_obj.get_fourier_difference())
 
-    def get_hp_predict_waypoints(self, pred_traj_waypoint):
-        waypoints = torch.argmax(pred_traj_waypoint, dim=-1)
-        return self.get_hp_waypoints(waypoints)
+        out: Dict[str, float] = {}
+        if l2_vals:
+            out["L2_distance"] = float(np.mean(l2_vals))
+        if haus_vals:
+            out["hausdorff_distance"] = float(np.mean(haus_vals))
+        if fourier_vals:
+            out["fourier_difference"] = float(np.mean(fourier_vals))
+        return out
+
+
+    def _tokens_to_np(self, x: torch.Tensor) -> List[np.ndarray]:
+        """Convert (B,T,V) logits **or** (B,T) tokens -> list of N×2 np arrays."""
+        if x.ndim == 3:
+            x = torch.argmax(x, dim=-1)  # logits -> tokens
+        x = x.long().cpu()
+        out: List[np.ndarray] = []
+        for seq in x:  # iterate over batch dim
+            pts_np = detokenize_traj_waypoints(
+                seq,
+                self.detokenizer,
+                self.cfg.bos_token,
+                self.cfg.eos_token,
+                self.cfg.pad_token,
+            )
+            out.append(pts_np.astype(np.float64))  # ensure float
+        return out
 
     @staticmethod
-    def get_hp_waypoints(batch_waypoints):
-        return batch_waypoints[:, 1:-1]
+    def _align_lengths(a: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Truncate the longer array so that `len(a)==len(b)`.
+
+        If either becomes length < 1 after truncation, returns (empty, empty)
+        so caller can skip.
+        """
+        n = min(len(a), len(b))
+        if n < 1:
+            return np.empty(0), np.empty(0)
+        return a[:n], b[:n]

@@ -22,7 +22,7 @@ inference_obj = TrajectoryPredictModule(infer_cfg=pred_config_obj,
 
 print(inference_obj.model)
 
-data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj, is_train=1),
+data = DataLoader(dataset=TrajectoryDataModule(config=train_config_obj),
                   batch_size=train_config_obj.batch_size,
                   shuffle=True,
                   num_workers=train_config_obj.num_workers,
