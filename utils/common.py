@@ -54,11 +54,6 @@ class ScalingLawCallback(Callback):
 
         self.epoch_compute_values.append(C_e)
 
-    def on_train_end(self, trainer, pl_module):
-        C_total = sum(self.epoch_compute_values)
-        pl_module.log('scaling_compute_total', C_total)
-        print(f"\n>>> Total scaling_compute: {C_total:.3e}")
-
 
 def setup_callbacks(cfg_obj, monitor, mode):
     ckpt_callback = ModelCheckpoint(
