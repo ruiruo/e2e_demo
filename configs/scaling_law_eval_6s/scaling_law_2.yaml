@@ -51,7 +51,7 @@ max_agent: 5
 ignore_eos_loss: False
 device: "cuda"
 customized_metric: True
-ar_start_epoch: 5
+ar_start_epoch: 2
 ar_warmup_epochs: 100
 max_grad_norm: 2.0
 
