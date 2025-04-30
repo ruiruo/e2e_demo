@@ -12,11 +12,14 @@ from highway_env.road.road import Road, RoadNetwork, LineType
 from highway_env.road.lane import PolyLaneFixedWidth
 from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.objects import Obstacle, Landmark
+from utils.trajectory_utils import parallel_find_bin, tokenize_traj_waypoints
+from utils.trajectory_utils import TopologyHistory
+from utils.config import Configuration
 
 
 class ReplayHighwayEnv(AbstractEnv):
     def __init__(self,
-                 task_paths: str, configs: dict):
+                 task_paths: str, configs: dict, pre_train_config: Configuration):
         self.task_paths = task_paths
         highway_config = {
             # where to pick up your pickles:
@@ -29,15 +32,21 @@ class ReplayHighwayEnv(AbstractEnv):
             "policy_frequency": 1,
             "offscreen_rendering": False,
         }
+        self.pre_train_config = pre_train_config
+        self.x_boundaries = self.pre_train_config.x_boundaries
+        self.y_boundaries = self.pre_train_config.y_boundaries
         self.x_max = configs["x_max"]
-        self.x_min = configs["x_min"]
         self.y_max = configs["y_max"]
+        self.x_min = configs["x_min"]
         self.y_min = configs["y_min"]
-
+        self.local2token = np.load(self.pre_train_config.tokenizer)
+        self.obs_h = len(self.x_boundaries) - 1  # number of cells in x
+        self.obs_w = len(self.y_boundaries) - 1  # number of cells in y
         self.agent_feature = None
         self.vector_graph_feature = None
         self.ego_feature = None
         self.ego = None
+        self.ego_input_ids = []
         self.all_agents = {}
         self.t = 0
         super().__init__(highway_config, render_mode="rgb_array")
@@ -48,6 +57,8 @@ class ReplayHighwayEnv(AbstractEnv):
         self.all_agents.clear()
         self._read_file()
         self._make_road()
+        _ = self.get_current_obs_view()
+        self.ego_input_ids = self.ego_input_ids + self.ego_input_ids + self.ego_input_ids
         # 2) do HighwayEnv’s normal reset (builds self.road & self.vehicles)
         obs = None
         info = {"image": self.render()}
@@ -58,11 +69,79 @@ class ReplayHighwayEnv(AbstractEnv):
 
         return obs, info
 
-    def get_current_obs(self):
-        pass
+    def get_current_obs_view(self):
+        ego_heading = self.ego.heading
+        ego_speed = self.ego.speed
+        rel_xy = []
+        features = []
+        ids = []
+        ego_position = np.array([self.ego.position])
+        if not self.ego_input_ids:
+            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
+                                                                  self.x_boundaries, self.y_boundaries,
+                                                                  self.local2token)[0]))
+            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
+                                                                  self.x_boundaries, self.y_boundaries,
+                                                                  self.local2token)[0]))
+            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
+                                                                  self.x_boundaries, self.y_boundaries,
+                                                                  self.local2token)[0]))
+        else:
+            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
+                                                                  self.x_boundaries, self.y_boundaries,
+                                                                  self.local2token)[0]))
+        agent_info = TopologyHistory(self.pre_train_config, 0,
+                                     feature={
+                                         "ego_history_feature": self.ego_input_ids[-3:],
+                                         "agent_feature": agent_window,
+                                         "agent_attribute_feature": data["agent_attribute_feature"]
+                                     },
+                                     )
 
-    def move_ego(self):
-        pass
+        #
+        # for aid, veh in self.all_agents.items():
+        #     dx = float(veh.position[0] - ego_x)
+        #     dy = float(veh.position[1] - ego_y)
+        #
+        #     # 2. visibility cull ------------------------------------------------
+        #     if not (self.x_min <= dx < self.x_max and
+        #             self.y_min <= dy < self.y_max):
+        #         continue
+        #
+        #     rel_xy.append([dx, dy])
+        #     features.append([
+        #         veh.speed,
+        #         getattr(veh, "acceleration", 0.0),
+        #         veh.heading,
+        #         veh.LENGTH, veh.WIDTH
+        #     ])
+        #     ids.append(aid)
+        #
+        # if len(rel_xy) == 0:  # nothing visible
+        #     rel_xy = np.empty((0, 2), dtype=np.float32)
+        # else:
+        #     rel_xy = np.asarray(rel_xy, dtype=np.float32)
+        #     features = np.asarray(features, dtype=np.float32)
+        #
+        # # ------------------------------------------------------------------
+        # # 3. Tokenise each visible agent **in the shifted frame**
+        # # ------------------------------------------------------------------
+        # token_ids = tokenize_traj_waypoints(
+        #     rel_xy,
+        #     self.x_boundaries,
+        #     self.y_boundaries,
+        #     self.local2token
+        # )
+        return None
+
+    def move_ego(self, new_x: float, new_y: float) -> None:
+        """
+        Hard-warp the ego to (new_x, new_y) in world coords, then
+        refresh every other vehicle’s relative position.  Use with care:
+        • No dynamic constraints
+        • No collision check
+        """
+        self.ego.position = np.array([new_x, new_y], dtype=np.float32)
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         obs, reward, terminated, truncated, info = None, None, None, None, {"image": self.render()}
@@ -79,6 +158,17 @@ class ReplayHighwayEnv(AbstractEnv):
         if round(self.t, 0) >= 20 or ():
             terminated = True
         return obs, reward, terminated, truncated, info
+
+    def _get_obs(self):
+        ego_info = self.ego.to_dict()
+        ego_x, ego_y = ego_info["x"], ego_info["y"]
+        # get limitation
+        # get all available vehicle & obj
+        for each in self.all_agents.values():
+            # check it is available or not
+            pass
+        # shift
+        # build obs
 
     def _apply_background(self, t):
         """
@@ -128,10 +218,10 @@ class ReplayHighwayEnv(AbstractEnv):
             self.ego_feature[:, 6] = np.round(end_t - self.ego_feature[:, 6], 1)
             self.ego_feature = pd.DataFrame(self.ego_feature[:, 1:],
                                             columns=['x', 'y', 'heading', 'v', 'acc', 'timestamp'])
-            self.ego_feature = self.ego_feature[(self.ego_feature.x < self.x_max) &
-                                                (self.ego_feature.x > self.x_min) &
-                                                (self.ego_feature.y < self.y_max) &
-                                                (self.ego_feature.y > self.y_min)]
+            self.ego_feature = self.ego_feature[(self.ego_feature.x > self.x_min) &
+                                                (self.ego_feature.x < self.x_max) &
+                                                (self.ego_feature.y > self.y_min) &
+                                                (self.ego_feature.y < self.y_max)]
 
             for idx in range(len(self.data_info['agent_feature'])):
                 self.data_info['agent_feature'][idx] = self.data_info['agent_feature'][idx][::-1]
@@ -203,8 +293,6 @@ class ReplayHighwayEnv(AbstractEnv):
                 agent.WIDTH = float(agent_start_loc["width"])
                 agent.t = agent_start_loc["timestamp"]
                 self.ego = agent
-                # remove after display
-                self.all_agents[aid] = agent
             else:
                 if agent_start_loc["type"] == 791621440:
                     agent = Vehicle(self.road, position=position)
@@ -223,8 +311,8 @@ class ReplayHighwayEnv(AbstractEnv):
         )
         goal_pos = [float(self.ego_goal['x']), float(self.ego_goal['y'])]
         goal_marker = Landmark(self.road, position=goal_pos)
-        goal_marker.color = (0, 255, 0)       # bright green, for example
-        goal_marker.LENGTH = 3.0              # make it small
-        goal_marker.WIDTH  = 3.0
+        goal_marker.color = (0, 255, 0)  # bright green, for example
+        goal_marker.LENGTH = 3.0  # make it small
+        goal_marker.WIDTH = 3.0
         self.road.objects.append(goal_marker)
         print(self.agent_feature[self.agent_feature.timestamp == 0.0].shape[0], len(self.road.vehicles))

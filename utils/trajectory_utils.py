@@ -201,8 +201,8 @@ class TopologyHistory:
             agent_info.shape[0] == max_frame    (simple_deduction=True)
                              or  == unchanged   (simple_deduction=False)
 
-        •  The *token* column of padded ego rows  →  cfg.pad_token  (e.g. 509)
-        •  All continuous fields (x, y, heading, v, acc, …)         →  -300.
+        •  The *token* column of padded ego rows  →  cfg.pad_token  (e.g.509)
+        •  All continuous fields (x,y,heading,v,acc, …)         →  -300.
         •  For `agent_info` we create rows filled with `-300`
            and set the token slot to `cfg.pad_token`.
         """
