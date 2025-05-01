@@ -63,7 +63,6 @@ class TrajectoryTrainingModule(pl.LightningModule):
         else:
             loss = tf_loss
 
-
         self.log_dict({"train_loss": float(loss)}, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
@@ -73,20 +72,24 @@ class TrajectoryTrainingModule(pl.LightningModule):
     def validation_step(self, batch, _):
         labels = batch["labels"][:, 1:].to(self.device)
         # AR rollout
-        pred_tokens = self.gen_model.predict(batch, predict_token_num=labels.size(1))
+        pred_tokens, pred_logits = self.gen_model.predict(batch, predict_token_num=labels.size(1), with_logits=True)
         if self.cfg.ignore_eos_loss:
             labels = labels[:, :-1]
             pred_tokens = pred_tokens[:, :-1]
+            pred_logits = pred_logits[:, :-1]
 
-        metric = TrajectoryGeneratorMetric(self.cfg)
-        dists = metric.calculate_distance(pred_tokens.detach(), labels.detach())
+        val_loss = self._compute_loss(pred_logits, labels)
+
+        trj_metric = TrajectoryGeneratorMetric(self.cfg)
+        dists = trj_metric.calculate_distance(pred_tokens.detach(), labels.detach())
 
         # accuracy (exclude PAD)
         mask = labels != self.cfg.pad_token
         acc = ((pred_tokens == labels) & mask).sum() / mask.sum()
 
-        logs = {"val_accuracy": acc.detach().cpu(), **dists}
-        return logs
+        metrics = {"val_accuracy": acc.detach().cpu(), "train_loss": float(val_loss), **dists}
+        self.log_dict(metrics, prog_bar=True, logger=True)
+        return metrics
 
 
     def configure_optimizers(self):
