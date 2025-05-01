@@ -1,5 +1,5 @@
 ##################### Dataset Options #####################
-data_dir: '/home/chester.lin/data/reparke2e_sl/all'
+data_dir: '/home/chester.lin/data/reparke2e_sl/24k'
 training_dir: "train"
 validation_dir: "val"
 multi_agent_info: False
