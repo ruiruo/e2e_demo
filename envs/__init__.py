@@ -13,7 +13,7 @@ from highway_env.road.lane import PolyLaneFixedWidth
 from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.objects import Obstacle, Landmark
 from utils.trajectory_utils import parallel_find_bin, tokenize_traj_waypoints
-from utils.trajectory_utils import TopologyHistory
+from envs.agent_alignment import TopologyHistory
 from utils.config import Configuration
 
 
@@ -91,13 +91,8 @@ class ReplayHighwayEnv(AbstractEnv):
                                                                   self.x_boundaries, self.y_boundaries,
                                                                   self.local2token)[0]))
 
-        agent_info = TopologyHistory(self.pre_train_config, 0,
-                                     feature={
-                                         "ego_history_feature": self.ego_input_ids[-3:],
-                                         "agent_feature": agent_window,
-                                         "agent_attribute_feature": data["agent_attribute_feature"]
-                                     },
-                                     )
+        agent_info = TopologyHistory(self.pre_train_config, self.ego_input_ids[-3:],
+                                     self.agent_feature, ego_speed, self.t)
 
         #
         # for aid, veh in self.all_agents.items():
