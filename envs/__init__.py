@@ -47,6 +47,7 @@ class ReplayHighwayEnv(AbstractEnv):
         self.ego_feature = None
         self.ego = None
         self.ego_input_ids = []
+        self.ego_input_ids_raw = []
         self.all_agents = {}
         self.t = 0
         super().__init__(highway_config, render_mode="rgb_array")
@@ -57,7 +58,7 @@ class ReplayHighwayEnv(AbstractEnv):
         self.all_agents.clear()
         self._read_file()
         self._make_road()
-        _ = self.get_current_obs_view()
+        self._update(np.array([0, 0]))
         self.ego_input_ids = self.ego_input_ids + self.ego_input_ids + self.ego_input_ids
         # 2) do HighwayEnv’s normal reset (builds self.road & self.vehicles)
         obs = None
@@ -69,13 +70,7 @@ class ReplayHighwayEnv(AbstractEnv):
 
         return obs, info
 
-    def get_current_obs_view(self):
-        ego_heading = self.ego.heading
-        ego_speed = self.ego.speed
-        rel_xy = []
-        features = []
-        ids = []
-        ego_position = np.array([self.ego.position])
+    def _update(self, ego_position):
         if not self.ego_input_ids:
             self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
                                                                   self.x_boundaries, self.y_boundaries,
@@ -91,10 +86,13 @@ class ReplayHighwayEnv(AbstractEnv):
                                                                   self.x_boundaries, self.y_boundaries,
                                                                   self.local2token)[0]))
 
-        agent_info = TopologyHistory(self.pre_train_config, self.ego_input_ids[-3:],
-                                     self.agent_feature, ego_speed, self.t)
+        # update background first
 
-        #
+        agent_info = TopologyHistory(self.pre_train_config, self.ego_input_ids[-3:],
+                                     self.agent_feature, self.ego.speed, self.t)
+        agent_feature = agent_info.agent_info[-1]
+        updated_time = agent_info.segment_times
+
         # for aid, veh in self.all_agents.items():
         #     dx = float(veh.position[0] - ego_x)
         #     dy = float(veh.position[1] - ego_y)
