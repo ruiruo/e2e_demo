@@ -29,6 +29,9 @@ class TopologyHistory:
             self.agent_info = []
             return
         self._preprocess_ego()
+        if np.any(self.segment_times == np.nan, axis=0):
+            self.agent_info = []
+            return
         self._preprocess_agent()
 
     def _preprocess_ego(self):
