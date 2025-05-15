@@ -109,6 +109,8 @@ class AgentFeatureParser:
 
     def __init__(self, cfg: Configuration, time, agent: np.array):
         self.cfg = cfg
+        self.agent_raw = agent
+        self.timestamp = time
         self.pos_bias = np.ravel(agent.loc[(agent['aid'] == 0) & (agent['timestamp'] == time),
                                 ['x', 'y', 'heading']].to_numpy())
         self.agent = agent[agent['timestamp'] == time].to_numpy()
@@ -147,7 +149,6 @@ class AgentFeatureParser:
 
         # Subtract the positional bias from valid rows (only for x and y)
         agent_info[mask, 1:3] -= self.pos_bias[:2]
-
         # Calculate cosine and sine of the rotation angle
         cos_theta = np.cos(self.pos_bias[2])
         sin_theta = np.sin(self.pos_bias[2])

@@ -1,4 +1,5 @@
 import os
+import json
 import pickle
 import random
 import numpy as np
@@ -12,14 +13,16 @@ from highway_env.road.road import Road, RoadNetwork, LineType
 from highway_env.road.lane import PolyLaneFixedWidth
 from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.objects import Obstacle, Landmark
-from utils.trajectory_utils import parallel_find_bin, tokenize_traj_waypoints
+from utils.trajectory_utils import detokenize_traj_waypoints, tokenize_traj_waypoints
 from envs.agent_alignment import TopologyHistory
 from utils.config import Configuration
+from envs.utils import quantize_to_step
+import matplotlib.pyplot as plt
 
 
 class ReplayHighwayEnv(AbstractEnv):
     def __init__(self,
-                 task_paths: str, configs: dict, pre_train_config: Configuration):
+                 task_paths: str, env_config: dict, pre_train_config: Configuration):
         self.task_paths = task_paths
         highway_config = {
             # where to pick up your pickles:
@@ -30,16 +33,19 @@ class ReplayHighwayEnv(AbstractEnv):
             # tuning:
             "simulation_frequency": 15,
             "policy_frequency": 1,
-            "offscreen_rendering": False,
+            "offscreen_rendering": True,
         }
+        self.env_config = env_config
         self.pre_train_config = pre_train_config
         self.x_boundaries = self.pre_train_config.x_boundaries
         self.y_boundaries = self.pre_train_config.y_boundaries
-        self.x_max = configs["x_max"]
-        self.y_max = configs["y_max"]
-        self.x_min = configs["x_min"]
-        self.y_min = configs["y_min"]
+        self.x_max = self.x_boundaries[-1]
+        self.y_max = self.y_boundaries[-1]
+        self.x_min = self.x_boundaries[0]
+        self.y_min = self.x_boundaries[0]
         self.local2token = np.load(self.pre_train_config.tokenizer)
+        with open(self.pre_train_config.detokenizer, "r") as f:
+            self.token2local = json.load(f)
         self.obs_h = len(self.x_boundaries) - 1  # number of cells in x
         self.obs_w = len(self.y_boundaries) - 1  # number of cells in y
         self.agent_feature = None
@@ -47,124 +53,118 @@ class ReplayHighwayEnv(AbstractEnv):
         self.ego_feature = None
         self.ego = None
         self.ego_input_ids = []
-        self.ego_input_ids_raw = []
+        self.ego_position_raw = []
         self.all_agents = {}
         self.t = 0
+        self.segment_times = 0
         super().__init__(highway_config, render_mode="rgb_array")
         self.action_space = spaces.Discrete(5)
+        self.observation_space = spaces.Box(low=0, high=255, shape=[335])
 
     def reset(self, *, seed=None, options=None):
         # 1) pick & load a new episode
+        self._load_new()
+        self._update(np.array([0, 0]))
+        self._update(np.array([0, 0]))
+        self._update(np.array([0, 0]))
+        info = {}
+        self.t = 0
+        return None, info
+
+    def _load_new(self):
         self.all_agents.clear()
         self._read_file()
         self._make_road()
-        self._update(np.array([0, 0]))
-        self.ego_input_ids = self.ego_input_ids + self.ego_input_ids + self.ego_input_ids
-        # 2) do HighwayEnv’s normal reset (builds self.road & self.vehicles)
-        obs = None
-        info = {"image": self.render()}
+        self.ego_position_raw = []
 
-        # 3) place all other cars at frame 0
-        self.t = 0
-        # self._apply_frame(self.t)
-
-        return obs, info
+    def visualize(self):
+        img = self.render()
+        plt.figure(figsize=(6, 6))
+        plt.imshow(img)
+        plt.axis("off")
+        plt.savefig(self.env_config["test_img"] + str(self.t) + ".jpg",
+                    format='jpg', bbox_inches='tight', pad_inches=0)
 
     def _update(self, ego_position):
-        if not self.ego_input_ids:
-            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
-                                                                  self.x_boundaries, self.y_boundaries,
-                                                                  self.local2token)[0]))
-            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
-                                                                  self.x_boundaries, self.y_boundaries,
-                                                                  self.local2token)[0]))
-            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
-                                                                  self.x_boundaries, self.y_boundaries,
-                                                                  self.local2token)[0]))
-        else:
-            self.ego_input_ids.append(int(tokenize_traj_waypoints(ego_position,
-                                                                  self.x_boundaries, self.y_boundaries,
-                                                                  self.local2token)[0]))
+        # tokenize position
+        tokenized_positions = tokenize_traj_waypoints(np.array([ego_position]),
+                                                      self.x_boundaries, self.y_boundaries,
+                                                      self.local2token)
+        tokenized_positions = [int(i) for i in tokenized_positions]
+        self.ego_input_ids.extend(tokenized_positions)
 
-        # update background first
-
-        agent_info = TopologyHistory(self.pre_train_config, self.ego_input_ids[-3:],
+        # update background, create new agent_info, segment_times
+        agent_data = TopologyHistory(self.pre_train_config, self.ego_input_ids[-1:],
                                      self.agent_feature, self.ego.speed, self.t)
-        agent_feature = agent_info.agent_info[-1]
-        updated_time = agent_info.segment_times
+        agent_feature = agent_data.agent_info[-1]
+        segment_times = agent_data.segment_times
+        # update time
+        self.t += segment_times[0]
+        # move agent
+        self._apply_background()
+        # move ego
+        self._move_ego(ego_position)
+        # create flatten obs
+        obs = self._get_obs(agent_data)
+        flattened_obs = np.concatenate([np.array(obs["input_ids"]).flatten(),
+                                        np.array(obs["ego_info"]).flatten(),
+                                        np.array(obs["agent_info"]).flatten(),
+                                        np.array(obs["goal"]).flatten(),
+                                        ])
+        if self.t >= 0.5 or self.t == 0:
+            self.visualize()
+        return flattened_obs, segment_times[0]
 
-        # for aid, veh in self.all_agents.items():
-        #     dx = float(veh.position[0] - ego_x)
-        #     dy = float(veh.position[1] - ego_y)
-        #
-        #     # 2. visibility cull ------------------------------------------------
-        #     if not (self.x_min <= dx < self.x_max and
-        #             self.y_min <= dy < self.y_max):
-        #         continue
-        #
-        #     rel_xy.append([dx, dy])
-        #     features.append([
-        #         veh.speed,
-        #         getattr(veh, "acceleration", 0.0),
-        #         veh.heading,
-        #         veh.LENGTH, veh.WIDTH
-        #     ])
-        #     ids.append(aid)
-        #
-        # if len(rel_xy) == 0:  # nothing visible
-        #     rel_xy = np.empty((0, 2), dtype=np.float32)
-        # else:
-        #     rel_xy = np.asarray(rel_xy, dtype=np.float32)
-        #     features = np.asarray(features, dtype=np.float32)
-        #
-        # # ------------------------------------------------------------------
-        # # 3. Tokenise each visible agent **in the shifted frame**
-        # # ------------------------------------------------------------------
-        # token_ids = tokenize_traj_waypoints(
-        #     rel_xy,
-        #     self.x_boundaries,
-        #     self.y_boundaries,
-        #     self.local2token
-        # )
-        return None
+    def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
+        obs, reward, terminated, truncated, info = None, None, None, None, {"image": self.render()}
+        after_detokenize = detokenize_traj_waypoints(
+            np.array([action]),
+            self.token2local,
+            self.pre_train_config.bos_token,
+            self.pre_train_config.eos_token,
+            self.pre_train_config.pad_token,
+        )
+        obs, segment_times = self._update(after_detokenize[0])
+        self.segment_times = segment_times
+        if round(self.t, 0) >= 3 or self.segment_times >= 0.4:
+            terminated = True
+        reward = self._reward(action)
+        return obs, reward, terminated, truncated, info
 
-    def move_ego(self, new_x: float, new_y: float) -> None:
+    def _reward(self, action: Action) -> dict[str, float]:
+        reward = 0
+        if self.segment_times >= 0.4:
+            reward -= 1
+        return 0
+
+    def _move_ego(self, ego_position) -> None:
         """
         Hard-warp the ego to (new_x, new_y) in world coords, then
         refresh every other vehicle’s relative position.  Use with care:
         • No dynamic constraints
         • No collision check
         """
-        self.ego.position = np.array([new_x, new_y], dtype=np.float32)
+        self.ego.position += ego_position
+        self.ego_position_raw.append(self.ego.position.tolist())
 
-    def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
-        obs, reward, terminated, truncated, info = None, None, None, None, {"image": self.render()}
-        # # 1) step ego + traffic model
-        # obs, reward, terminated, truncated, info = super().step(action)
-        #
-        # # 2) bump our timestep
-        self.t += 0.2
-        #
-        # # 3) overwrite every other vehicle from the replay buffer
-        self._apply_background(self.t)
-        #
-        # # (we leave collision/reward as-is for now)
-        if round(self.t, 0) >= 20 or ():
-            terminated = True
-        return obs, reward, terminated, truncated, info
+    def _get_obs(self, agent_info):
+        input_ids = np.array([[0,0]])
+        input_ids = tokenize_traj_waypoints(input_ids, self.x_boundaries, self.y_boundaries, self.local2token)
+        # heading, speed, acc
+        ego_info = [self.ego.heading, self.ego.speed, self.ego.action["acceleration"]]
+        goal_raw = self.ego_goal_raw - self.ego.position
+        goal = self._clamp_goal(goal_raw)
 
-    def _get_obs(self):
-        ego_info = self.ego.to_dict()
-        ego_x, ego_y = ego_info["x"], ego_info["y"]
-        # get limitation
-        # get all available vehicle & obj
-        for each in self.all_agents.values():
-            # check it is available or not
-            pass
-        # shift
-        # build obs
+        goal = tokenize_traj_waypoints(np.array([goal]), self.x_boundaries, self.y_boundaries, self.local2token)
 
-    def _apply_background(self, t):
+        return {
+            "goal": goal,
+            "input_ids": input_ids,
+            "ego_info": ego_info,
+            "agent_info": agent_info.agent_info[0],
+        }
+
+    def _apply_background(self):
         """
         Overwrite all other vehicles’ states (position, heading, speed, acc)
         from self.agent_feature at the current timestamp self.t.
@@ -175,7 +175,8 @@ class ReplayHighwayEnv(AbstractEnv):
         """
         # round self.t to match the timestamp column’s precision
         # select rows for this time
-        df_t = self.agent_feature[self.agent_feature['timestamp'] == t]
+        quantized_t = quantize_to_step(self.t, step=0.2, method="round")
+        df_t = self.agent_feature[self.agent_feature['timestamp'] == quantized_t]
 
         for _, row in df_t.iterrows():
             aid = row['aid']
@@ -193,9 +194,9 @@ class ReplayHighwayEnv(AbstractEnv):
             veh.heading = float(row['heading'])
             veh.speed = float(row['v'])
             # if your Vehicle/Obstacle class has an acceleration attr:
-            if hasattr(veh, 'acceleration'):
-                veh.acceleration = float(row['acc'])
-            veh.t += t
+            if hasattr(veh, "action"):
+                veh.action["acceleration"] = float(row['acc'])
+            veh.t += quantized_t
 
     def _reward(self, action):
         return 0
@@ -237,7 +238,9 @@ class ReplayHighwayEnv(AbstractEnv):
             self.vector_graph_feature = self.data_info['vector_graph_feature'][::-1]
             self.vector_graph_feature[:, :, 0:2] -= pos_bias
             self.vector_graph_feature[:, :, 2:4] -= pos_bias
-            self.ego_goal = self.ego_feature.sort_values('timestamp').iloc[-1]
+            ego_goal = self.ego_feature.sort_values('timestamp').iloc[-1]
+            self.ego_goal = np.array([[ego_goal["x"], ego_goal["y"]]])
+            self.ego_goal_raw = np.array([ego_goal["x"], ego_goal["y"]])
 
     def _make_road(self):
         """
@@ -279,9 +282,13 @@ class ReplayHighwayEnv(AbstractEnv):
             agent_start_loc = df.sort_values("timestamp").iloc[0]
             position = [float(agent_start_loc["x"]), float(agent_start_loc["y"])]
             if aid == 0:
-                agent = Vehicle(self.road, position=position,
+                speed = agent_start_loc["v"]
+                if speed == 0:
+                    speed = 5
+                agent = Vehicle(self.road,
+                                position=position,
                                 heading=float(agent_start_loc["heading"]),
-                                speed=float(agent_start_loc["v"]))
+                                speed=speed)
                 agent.color = (255, 255, 255)
                 agent.LENGTH = float(agent_start_loc["length"])
                 agent.WIDTH = float(agent_start_loc["width"])
@@ -303,10 +310,39 @@ class ReplayHighwayEnv(AbstractEnv):
             vehicles=[self.ego] + list(self.all_agents.values()),
             record_history=False,
         )
-        goal_pos = [float(self.ego_goal['x']), float(self.ego_goal['y'])]
-        goal_marker = Landmark(self.road, position=goal_pos)
+        goal_marker = Landmark(self.road, position=self.ego_goal_raw.tolist())
         goal_marker.color = (0, 255, 0)  # bright green, for example
         goal_marker.LENGTH = 3.0  # make it small
         goal_marker.WIDTH = 3.0
         self.road.objects.append(goal_marker)
-        print(self.agent_feature[self.agent_feature.timestamp == 0.0].shape[0], len(self.road.vehicles))
+
+    def _clamp_goal(self, goal_xy: np.ndarray,
+                    eps: float = 1e-6) -> np.ndarray:
+        """
+        Force `goal_xy` to lie inside the 2-D boundary box defined by
+        `x_boundaries` and `y_boundaries`.
+
+        Parameters
+        ----------
+        goal_xy : np.ndarray
+            Shape (2,) – [x, y] coordinates of the goal.
+        x_boundaries : np.ndarray
+            Sorted 1-D array of x-bin edges (length ≥ 2).
+        y_boundaries : np.ndarray
+            Sorted 1-D array of y-bin edges (length ≥ 2).
+        eps : float
+            Tiny margin so the point never lands *exactly* on the edge,
+            which can confuse discretisers.  Default 1 × 10⁻⁶.
+
+        Returns
+        -------
+        np.ndarray
+            Clamped goal coordinates, same shape as `goal_xy`.
+        """
+        x_min, x_max = self.x_boundaries[0], self.x_boundaries[-1]
+        y_min, y_max = self.y_boundaries[0], self.y_boundaries[-1]
+
+        goal_clamped = np.asarray(goal_xy, dtype=float).copy()
+        goal_clamped[0] = np.clip(goal_clamped[0], x_min + eps, x_max - eps)
+        goal_clamped[1] = np.clip(goal_clamped[1], y_min + eps, y_max - eps)
+        return goal_clamped
