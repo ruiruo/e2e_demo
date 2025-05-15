@@ -11,7 +11,6 @@ experiment_name: e2e_planner_scaling_law_4s
 
 ##################### Dataset Generate Options #####################
 tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
-tfrecord_files_list: "/share-pnc/chester.lin/data/data_list.txt" # same_navi_1217_4w: 143297340
 bucket: ad-cn-hfidc-pnc-data3
 access_key: 8fd6a2c297574ba8
 secret_key: a6089ccf0e85449a92c6f1b70dec79d3
