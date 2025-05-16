@@ -65,6 +65,7 @@ class ReplayHighwayEnv(AbstractEnv):
     def reset(self, *, seed=None, options=None):
         # 1) pick & load a new episode
         self._load_new()
+
         osb, _ = self._update(np.array([0, 0]))
         osb, _ = self._update(np.array([0, 0]))
         osb, _ = self._update(np.array([0, 0]))
@@ -72,7 +73,9 @@ class ReplayHighwayEnv(AbstractEnv):
         self.t = 0
         return osb, info
 
+    # Shaoqian
     def _load_new(self):
+        # Shaoqian
         self.all_agents.clear()
         self._read_file()
         self._make_road()
@@ -86,6 +89,7 @@ class ReplayHighwayEnv(AbstractEnv):
         plt.savefig(self.env_config["test_img"] + str(self.t) + ".jpg",
                     format='jpg', bbox_inches='tight', pad_inches=0)
 
+    #shaoqian wandou
     def _update(self, ego_position):
         # tokenize position
         tokenized_positions = tokenize_traj_waypoints(np.array([ego_position]),
@@ -97,7 +101,7 @@ class ReplayHighwayEnv(AbstractEnv):
         # update background, create new agent_info, segment_times
         # todo: TopologyHistory issue
         agent_data = TopologyHistory(self.pre_train_config, self.ego_input_ids[-1:],
-                                 self.agent_feature, self.ego.speed, self.t)
+                                     self.agent_feature, self.ego.speed, self.t)
         segment_times = agent_data.segment_times
         # update time
         self.t += segment_times[0]
@@ -116,6 +120,7 @@ class ReplayHighwayEnv(AbstractEnv):
             self.visualize()
         return flattened_obs, segment_times[0]
 
+    # zengyuan, qiming, shaoqian, wandou, chuanpu
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         obs, reward, terminated, truncated, info = None, None, None, None, {"image": self.render()}
         after_detokenize = detokenize_traj_waypoints(
@@ -139,12 +144,14 @@ class ReplayHighwayEnv(AbstractEnv):
             self.last_observation = obs
         return obs, reward, terminated, truncated, info
 
+    # all
     def _reward(self, action: Action) -> dict[str, float]:
         reward = 0
         if self.segment_times >= 0.4:
             reward -= 1
         return 0
 
+    # Qiming, chuanpu
     def _move_ego(self, ego_position) -> None:
         """
         Hard-warp the ego to (new_x, new_y) in world coords, then
@@ -155,8 +162,9 @@ class ReplayHighwayEnv(AbstractEnv):
         self.ego.position += ego_position
         self.ego_position_raw.append(self.ego.position.tolist())
 
+    # Shaoqian, Wandou
     def _get_obs(self, agent_info):
-        input_ids = np.array([[0,0]])
+        input_ids = np.array([[0, 0]])
         input_ids = tokenize_traj_waypoints(input_ids, self.x_boundaries, self.y_boundaries, self.local2token)
         # heading, speed, acc
         ego_info = [self.ego.heading, self.ego.speed, self.ego.action["acceleration"]]
@@ -172,6 +180,7 @@ class ReplayHighwayEnv(AbstractEnv):
             "agent_info": agent_info.agent_info[0],
         }
 
+    # Wandou, SHaoqian
     def _apply_background(self):
         """
         Overwrite all other vehicles’ states (position, heading, speed, acc)
@@ -206,9 +215,7 @@ class ReplayHighwayEnv(AbstractEnv):
                 veh.action["acceleration"] = float(row['acc'])
             veh.t += quantized_t
 
-    def _reward(self, action):
-        return 0
-
+    # Shaoqian
     def _read_file(self):
         task = random.sample(os.listdir(self.task_paths), 1)[0]
         pkl = random.sample(os.listdir(os.path.join(self.task_paths, task)), 1)[0]
@@ -250,6 +257,7 @@ class ReplayHighwayEnv(AbstractEnv):
             self.ego_goal = np.array([[ego_goal["x"], ego_goal["y"]]])
             self.ego_goal_raw = np.array([ego_goal["x"], ego_goal["y"]])
 
+    # Shaoqian
     def _make_road(self):
         """
         Build self.road from self.vector_graph_feature,
@@ -324,6 +332,7 @@ class ReplayHighwayEnv(AbstractEnv):
         goal_marker.WIDTH = 3.0
         self.road.objects.append(goal_marker)
 
+    # Zengyuan
     def _clamp_goal(self, goal_xy: np.ndarray,
                     eps: float = 1e-6) -> np.ndarray:
         """

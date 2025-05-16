@@ -46,4 +46,5 @@ for i in range(0, 20):
         "goal": torch.Tensor([obs[634:]]).to("cuda", dtype=torch.long),
     }
     outputs = inference_obj.inference_batch(model_input)[0]
+    print(outputs)
     obs = env.step(outputs[2])[0]
