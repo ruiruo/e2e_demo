@@ -36,6 +36,14 @@ env = OpenCVRecorder(ReplayHighwayEnv("/home/nio/data/test/",
 obs, info = env.reset()
 
 for i in range(0, 20):
-    model_input = 5
+    model_input = {
+        "input_ids": torch.Tensor([obs[0:1]]).to("cuda", dtype=torch.long),
+        "ego_info": torch.Tensor([obs[1:4]]).to("cuda", dtype=torch.float),
+        "agent_info": torch.Tensor([obs[4: 634]]).to("cuda", dtype=torch.float).reshape([1,
+                                                                                         pretrain_config_obj.max_frame + 1,
+                                                                                         pretrain_config_obj.max_agent,
+                                                                                         -1]),
+        "goal": torch.Tensor([obs[634:]]).to("cuda", dtype=torch.long),
+    }
     outputs = inference_obj.inference_batch(model_input)[0]
     obs = env.step(outputs[2])[0]
