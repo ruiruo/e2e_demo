@@ -92,6 +92,8 @@ def get_train_config_obj(config_path: str):
     with open(config_path, 'r') as yaml_file:
         try:
             config_yaml = yaml.safe_load(yaml_file)
+            if "tfrecord_files_list" in config_yaml:
+                config_yaml.pop("tfrecord_files_list")
             config_obj = Configuration(**config_yaml)
             config_obj.config_path = config_path
             config_obj.log_dir = os.path.join(config_obj.log_root_dir, exp_name)

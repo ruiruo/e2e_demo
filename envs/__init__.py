@@ -59,17 +59,17 @@ class ReplayHighwayEnv(AbstractEnv):
         self.segment_times = 0
         super().__init__(highway_config, render_mode="rgb_array")
         self.action_space = spaces.Discrete(5)
-        self.observation_space = spaces.Box(low=0, high=255, shape=[335])
+        self.observation_space = spaces.Box(low=0, high=255, shape=[635])
 
     def reset(self, *, seed=None, options=None):
         # 1) pick & load a new episode
         self._load_new()
-        self._update(np.array([0, 0]))
-        self._update(np.array([0, 0]))
-        self._update(np.array([0, 0]))
+        osb, _ = self._update(np.array([0, 0]))
+        osb, _ = self._update(np.array([0, 0]))
+        osb, _ = self._update(np.array([0, 0]))
         info = {}
         self.t = 0
-        return None, info
+        return osb, info
 
     def _load_new(self):
         self.all_agents.clear()
@@ -94,9 +94,9 @@ class ReplayHighwayEnv(AbstractEnv):
         self.ego_input_ids.extend(tokenized_positions)
 
         # update background, create new agent_info, segment_times
+        # todo: TopologyHistory issue
         agent_data = TopologyHistory(self.pre_train_config, self.ego_input_ids[-1:],
-                                     self.agent_feature, self.ego.speed, self.t)
-        agent_feature = agent_data.agent_info[-1]
+                                 self.agent_feature, self.ego.speed, self.t)
         segment_times = agent_data.segment_times
         # update time
         self.t += segment_times[0]
@@ -126,7 +126,7 @@ class ReplayHighwayEnv(AbstractEnv):
         )
         obs, segment_times = self._update(after_detokenize[0])
         self.segment_times = segment_times
-        if round(self.t, 0) >= 3 or self.segment_times >= 0.4:
+        if round(self.t, 0) >= 3 or self.segment_times >= 2:
             terminated = True
         reward = self._reward(action)
         return obs, reward, terminated, truncated, info
