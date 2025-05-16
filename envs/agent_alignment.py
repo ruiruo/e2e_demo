@@ -26,12 +26,17 @@ class TopologyHistory:
 
     def _preprocess(self):
         if self.ego_speed == 0.0:
+            print("ego_speed is 0, fill in the blanks for agent info")
             self.agent_info = []
             return
         self._preprocess_ego()
         if np.any(self.segment_times == np.nan, axis=0):
+            print("segment_times has nan, fill in the blanks for agent info")
             self.agent_info = []
             return
+        if self.start_t > self.agent['timestamp'].max():
+            self.agent_info = []
+            raise TimeExceedError("simulate time exceeds record time")
         self._preprocess_agent()
 
     def _preprocess_ego(self):
@@ -230,3 +235,6 @@ class AgentFeatureParser:
 
         return states
 
+
+class TimeExceedError(Exception):
+    pass

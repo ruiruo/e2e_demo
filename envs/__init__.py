@@ -14,7 +14,7 @@ from highway_env.road.lane import PolyLaneFixedWidth
 from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.objects import Obstacle, Landmark
 from utils.trajectory_utils import detokenize_traj_waypoints, tokenize_traj_waypoints
-from envs.agent_alignment import TopologyHistory
+from envs.agent_alignment import TopologyHistory, TimeExceedError
 from utils.config import Configuration
 from envs.utils import quantize_to_step
 import matplotlib.pyplot as plt
@@ -57,6 +57,7 @@ class ReplayHighwayEnv(AbstractEnv):
         self.all_agents = {}
         self.t = 0
         self.segment_times = 0
+        self.last_observation = None
         super().__init__(highway_config, render_mode="rgb_array")
         self.action_space = spaces.Discrete(5)
         self.observation_space = spaces.Box(low=0, high=255, shape=[635])
@@ -124,11 +125,18 @@ class ReplayHighwayEnv(AbstractEnv):
             self.pre_train_config.eos_token,
             self.pre_train_config.pad_token,
         )
-        obs, segment_times = self._update(after_detokenize[0])
-        self.segment_times = segment_times
-        if round(self.t, 0) >= 3 or self.segment_times >= 2:
+        try:
+            obs, segment_times = self._update(after_detokenize[0])
+            self.segment_times = segment_times
+            if self.segment_times >= 2:
+                terminated = True
+            reward = self._reward(action)
+        except TimeExceedError:
             terminated = True
-        reward = self._reward(action)
+            obs = self.last_observation
+            reward = 0
+        if obs is not None:
+            self.last_observation = obs
         return obs, reward, terminated, truncated, info
 
     def _reward(self, action: Action) -> dict[str, float]:
