@@ -4,13 +4,15 @@ from envs import ReplayHighwayEnv
 from envs.wrapper import OpenCVRecorder
 from utils.config import get_inference_config_obj
 import torch
+import os
+import shutil
 
 config = {
-    "test_img": "/home/nio/",
+    "test_img": "/home/nio/test_img/",
 }
 pred_config_obj = get_inference_config_obj("./configs/predict.yaml")
 
-pretrain_config_obj = get_train_config_obj(config_path="./configs/scaling_law_eval_4s/scaling_law_0.0.yaml")
+pretrain_config_obj = get_train_config_obj(config_path="./configs/scaling_law_eval_4s/scaling_law_0.1.yaml")
 pretrain_config_obj.log_every_n_steps = 1
 pretrain_config_obj.max_train = 20
 pretrain_config_obj.max_val = 5
@@ -20,14 +22,20 @@ pretrain_config_obj.log_dir = pretrain_config_obj.log_dir.replace("shaoqian.li",
 pretrain_config_obj.checkpoint_dir = pretrain_config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
 pretrain_config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
 pretrain_config_obj.local_data_save_dir = "/home/nio/"
-pretrain_config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
-pretrain_config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
+pretrain_config_obj.tokenizer = "configs/local2token.npy"
+pretrain_config_obj.detokenizer = "configs/token2local.json"
 pretrain_config_obj.batch_size = 4
 pretrain_config_obj.ar_start_epoch = 1
 pretrain_config_obj.ar_warmup_epochs = 1
 inference_obj = TrajectoryPredictModule(infer_cfg=pred_config_obj,
                                         train_cfg=pretrain_config_obj,
                                         device="gpu")
+
+# make dir
+if os.path.exists(config["test_img"]):
+    shutil.rmtree(config["test_img"])
+os.makedirs(config["test_img"])
+
 print("Model summary:")
 print(inference_obj.model)
 env = OpenCVRecorder(ReplayHighwayEnv("/home/nio/data/test/",
