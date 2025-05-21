@@ -4,6 +4,7 @@ import json
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
+from gymnasium.core import ObsType, WrapperObsType
 from gymnasium.spaces.utils import flatdim
 
 from utils.config import Configuration
@@ -12,7 +13,6 @@ from utils.config import Configuration
 class RayFlattenWrapper(gym.ObservationWrapper):
     def __init__(self, env):
         super(RayFlattenWrapper, self).__init__(env)
-        total_nums = 0
         self.observation_space = flatdim(self.env.observation_space)
 
     # todo: update after all other wrapper done
@@ -24,6 +24,48 @@ class RayFlattenWrapper(gym.ObservationWrapper):
                                         ])
         return flattened_obs
 
+# todo: add TopologyHistory in agent_alignment into obs
+# req: use abstract X, Y now.
+class TopologyHistoryWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super(TopologyHistoryWrapper, self).__init__(env)
+        # todo: obs["agents"] -> obs["agent_info"]
+
+    def build_agent_info(self):
+        pass
+
+    def observation(self, observation: ObsType) -> WrapperObsType:
+        return observation
+
+
+# todo: Trans abstract ego info into Info for auto-reg type
+# req: use abstract X, Y now.
+class EgoInfoWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super(EgoInfoWrapper, self).__init__(env)
+        # todo: obs["ego"] -> obs["input_ids"], obs["ego_info"]
+
+    def build_ego_info(self):
+        pass
+
+    def observation(self, observation: ObsType) -> WrapperObsType:
+        return observation
+
+# todo: rebuild ego action, use waypoint token as input
+# req: use abstract X, Y now.
+class EgoStepWrapper(gym.ActionWrapper):
+    def __init__(self, env, token_table, max_token):
+        super(EgoStepWrapper, self).__init__(env)
+        self.token_table = token_table
+        self.max_token = max_token
+        self.action_space = spaces.Box(low=0, high=len(self.token_table), shape=[self.max_token], dtype=np.int8)
+        # todo: obs["agents"] -> obs["agent_info"]
+
+    def build_agent_info(self):
+        pass
+
+    def action(self, action):
+        pass
 
 class OpenCVRecorder:
     def __init__(self, env, video_path="replay.mp4", fps=15):
