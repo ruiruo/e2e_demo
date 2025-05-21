@@ -4,7 +4,25 @@ import json
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
+from gymnasium.spaces.utils import flatdim
+
 from utils.config import Configuration
+
+
+class RayFlattenWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super(RayFlattenWrapper, self).__init__(env)
+        total_nums = 0
+        self.observation_space = flatdim(self.env.observation_space)
+
+    # todo: update after all other wrapper done
+    def observation(self, obs):
+        flattened_obs = np.concatenate([np.array(obs["ego"]).flatten(),
+                                        np.array(obs["agents"]).flatten(),
+                                        np.array(obs["goal"]).flatten(),
+                                        np.array(obs["time"]).flatten(),
+                                        ])
+        return flattened_obs
 
 
 class OpenCVRecorder:

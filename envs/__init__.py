@@ -60,7 +60,13 @@ class ReplayHighwayEnv(AbstractEnv):
         self.last_observation = None
         super().__init__(highway_config, render_mode="rgb_array")
         self.action_space = spaces.Discrete(5)
-        self.observation_space = spaces.Box(low=0, high=255, shape=[635])
+        self.observation_space = spaces.Dict({
+            "goal": spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32),
+            "input_ids": spaces.Box(low=-np.inf, high=np.inf, dtype=np.int32),
+            "ego_info": spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32),
+            "agent_info": spaces.Box(low=-np.inf, high=np.inf, dtype=np.float32),
+
+        })
 
     def reset(self, *, seed=None, options=None):
         # 1) pick & load a new episode
@@ -89,7 +95,7 @@ class ReplayHighwayEnv(AbstractEnv):
         plt.savefig(self.env_config["test_img"] + str(self.t) + ".jpg",
                     format='jpg', bbox_inches='tight', pad_inches=0)
 
-    #shaoqian wandou
+    # shaoqian wandou
     def _update(self, ego_position):
         # tokenize position
         tokenized_positions = tokenize_traj_waypoints(np.array([ego_position]),

@@ -17,9 +17,11 @@ import pandas as pd
 import pickle
 import random
 
+LIMIT = 200.0
 
 class ReplayHighwayCoreEnv(AbstractEnv):
     metadata = {"render_modes": ["rgb_array"]}
+
 
     def __init__(self, task_paths: str | Path, cfg: Configuration, figure_path="./"):
         self.task_paths = Path(task_paths)
@@ -41,9 +43,15 @@ class ReplayHighwayCoreEnv(AbstractEnv):
         self.max_agents = 20
         super().__init__(highway_cfg, render_mode="rgb_array")
         # --- gym spaces (continuous, unbounded → wrappers will clamp) ---
-        self.action_space = spaces.Box(low=-10, high=10, shape=(2,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
         # obs is dict; space defined lazily in `reset()` when we know #agents
-        self.observation_space: spaces.Dict | None = None
+        self.observation_space = spaces.Dict({
+            "ego": spaces.Box(low=-LIMIT, high=LIMIT, dtype=np.float32, shape=[5]),
+            "agents": spaces.Box(low=-LIMIT, high=LIMIT, dtype=np.float32, shape=[20, 7]),
+            "goal": spaces.Box(low=-LIMIT, high=LIMIT, dtype=np.float32, shape=[2]),
+            "time": spaces.Box(low=-LIMIT, high=LIMIT, dtype=np.float32, shape=[1]),
+        })
+
         self._prev_dist = None
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
