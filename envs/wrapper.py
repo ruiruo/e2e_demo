@@ -24,7 +24,7 @@ class RayFlattenWrapper(gym.ObservationWrapper):
                                         ])
         return flattened_obs
 
-# todo: add TopologyHistory in agent_alignment into obs
+# todo(shaoqian): add TopologyHistory in agent_alignment into obs
 # req: use abstract X, Y now.
 class TopologyHistoryWrapper(gym.ObservationWrapper):
     def __init__(self, env):
@@ -38,7 +38,7 @@ class TopologyHistoryWrapper(gym.ObservationWrapper):
         return observation
 
 
-# todo: Trans abstract ego info into Info for auto-reg type
+# todo(chuanpu): Trans abstract ego info into Info for auto-reg type
 # req: use abstract X, Y now.
 class EgoInfoWrapper(gym.ObservationWrapper):
     def __init__(self, env):
@@ -51,7 +51,7 @@ class EgoInfoWrapper(gym.ObservationWrapper):
     def observation(self, observation: ObsType) -> WrapperObsType:
         return observation
 
-# todo: rebuild ego action, use waypoint token as input
+# todo(qiming): rebuild ego action, use waypoint token as input
 # req: use abstract X, Y now.
 class EgoStepWrapper(gym.ActionWrapper):
     def __init__(self, env, token_table, max_token):
