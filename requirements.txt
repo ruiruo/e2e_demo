@@ -113,3 +113,4 @@ wrapt
 yarl
 torch
 tensorflow
+ray[all]==2.8

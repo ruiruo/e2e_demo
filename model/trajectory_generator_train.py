@@ -66,9 +66,6 @@ class TrajectoryTrainingModule(pl.LightningModule):
         self.log_dict({"train_loss": float(loss)}, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
-    # ──────────────────────────────────────────────────────────────────────
-    # Validation step
-    # ──────────────────────────────────────────────────────────────────────
     def validation_step(self, batch, _):
         labels = batch["labels"][:, 1:].to(self.device)
         # AR rollout

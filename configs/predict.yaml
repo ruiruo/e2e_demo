@@ -1,2 +1,2 @@
-model_ckpt_path: "/home/nio/checkpoints/small/exp_2025_4_11_6_24_29/epoch=299-val_accuracy=0.78.ckpt"
+model_ckpt_path: "/home/nio/0.1.ckpt"
 training_config: "training_shaoqian1"
