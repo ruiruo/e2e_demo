@@ -18,6 +18,7 @@ import pickle
 import random
 
 LIMIT = 200.0
+epsilon = 1e-3
 
 class ReplayHighwayCoreEnv(AbstractEnv):
     metadata = {"render_modes": ["rgb_array"]}
@@ -90,7 +91,7 @@ class ReplayHighwayCoreEnv(AbstractEnv):
 
         # agents except ego
         quantized_t = quantize_to_step(self.t, step=0.2, method="round")
-        df_agents = self.agent_feature[self.agent_feature["timestamp"] == quantized_t]
+        df_agents = self.agent_feature[abs(self.agent_feature["timestamp"] - quantized_t) < epsilon]
         df_agents = df_agents[df_agents.aid != 0]  # drop ego row if any
 
         agents_raw = df_agents[[
@@ -124,7 +125,7 @@ class ReplayHighwayCoreEnv(AbstractEnv):
     def _apply_background_world(self):
         """Overwrite other vehicles at current time step (world coords)."""
         step_time = quantize_to_step(self.t, step=0.2, method="round")
-        df_t = self.agent_feature[self.agent_feature["timestamp"] == step_time]
+        df_t = self.agent_feature[abs(self.agent_feature["timestamp"] - step_time) < epsilon]
         for _, row in df_t.iterrows():
             aid = int(row["aid"])
             veh = self.all_agents.get(aid)
@@ -158,6 +159,9 @@ class ReplayHighwayCoreEnv(AbstractEnv):
             data = pickle.load(f)
 
         # ego & agent features now kept in world frame -----------------
+        data["ego_history_feature"] = data["ego_history_feature"][::-1]
+        raw_end_t = np.round(data["ego_history_feature"][0, 7].copy(), 1)
+        data["ego_history_feature"][:, 7] = np.round(raw_end_t - data["ego_history_feature"][:, 7], 1)
         self.ego_feature = pd.DataFrame(
             data["ego_history_feature"][:, 2:],
             columns=["x", "y", "heading", "v", "acc", "timestamp"],
@@ -168,7 +172,7 @@ class ReplayHighwayCoreEnv(AbstractEnv):
         ).to_dict(orient="records")
 
         agent_feature = pd.DataFrame(
-            data["agent_feature"].reshape(-1, 8)[:, 1:],
+            data["agent_feature"].reshape(-1, 8)[:, 1:][::-1],
             columns=["aid", "x", "y", "heading", "v", "acc", "timestamp"],
         )
         agent_attr = pd.DataFrame(
@@ -177,6 +181,7 @@ class ReplayHighwayCoreEnv(AbstractEnv):
         )
 
         self.agent_feature = agent_feature.merge(agent_attr, on="aid").reset_index(drop=True)
+        self.agent_feature['timestamp'] = np.round(raw_end_t - self.agent_feature['timestamp'], 1)
         self.vector_graph_feature = data["vector_graph_feature"]
 
         # goal is last ego row (world frame)
@@ -215,7 +220,7 @@ class ReplayHighwayCoreEnv(AbstractEnv):
                 network.add_lane(str(road_id), str(road_id), lane)
 
         # ---------------- vehicles ----------------
-        zero_time = self.agent_feature[self.agent_feature["timestamp"] == 0]
+        zero_time = self.agent_feature[abs(self.agent_feature["timestamp"]) < epsilon]
         for aid, df in zero_time.groupby("aid"):
             row = df.iloc[0]
             pos = [row["x"], row["y"]]
