@@ -43,7 +43,7 @@ class ReplayHighwayCoreEnv(AbstractEnv):
         self.max_agents = 20
         super().__init__(highway_cfg, render_mode="rgb_array")
         # --- gym spaces (continuous, unbounded → wrappers will clamp) ---
-        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-LIMIT, high=LIMIT, shape=(2,), dtype=np.float32)
         # obs is dict; space defined lazily in `reset()` when we know #agents
         self.observation_space = spaces.Dict({
             "ego": spaces.Box(low=-LIMIT, high=LIMIT, dtype=np.float32, shape=[5]),
