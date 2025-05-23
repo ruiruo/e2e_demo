@@ -64,5 +64,14 @@ print(f"Environment '{env_name}' registered.")
 
 # Register Custom Model
 custom_model_name_registered = "trajectory_generator_v0"
-ModelCatalog.register_custom_model(custom_model_name_registered, TrajectoryGeneratorPPOModel)
+ModelCatalog.register_custom_model(custom_model_name_registered, TrajectoryGenerator)
 print(f"Custom model '{custom_model_name_registered}' registered.")
+
+
+# PPO Configuration
+config = PPOConfig().environment(env_name)
+config = config.framework("torch")
+config = config.rl_module(_enable_rl_module_api=False)
+config = config.training(_enable_learner_api=False)
+config.rollouts(rollout_fragment_length="auto")
+trainer = config.build()

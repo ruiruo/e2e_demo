@@ -7,7 +7,7 @@ from gymnasium.core import ObsType, WrapperObsType
 from gymnasium.spaces.utils import flatdim
 
 
-# OPENCV, RayFlatten, EGO_INFO, AGENT_INFO, EGO_STEP, AGENT_STEP, CORE
+# OPENCV, RayFlatten, EGO_LOOP_STEP, AGENT_INFO, EGO_INFO, EGO_STEP, CORE
 
 class RayFlattenWrapper(gym.ObservationWrapper):
     def __init__(self, env):
