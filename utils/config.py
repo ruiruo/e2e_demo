@@ -34,6 +34,10 @@ class Configuration:
     vector_graph_feature_fea_dim: list
     max_train: int
     max_val: int
+    sampling_strategy: str
+    sampling_temperature: float
+    config_top_k: int
+    config_top_p: float
 
     # Basic Options
     with_pad: bool

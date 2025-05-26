@@ -1,2 +1,0 @@
-model_ckpt_path: "/home/nio/checkpoints/small/30_frames/epoch=179-val_accuracy=0.42.ckpt"
-training_config: "training_chester1"

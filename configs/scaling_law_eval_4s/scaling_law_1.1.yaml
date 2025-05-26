@@ -55,8 +55,8 @@ ar_warmup_epochs: 100
 max_grad_norm: 2.0
 
 ##################### Data Process #####################
-tokenizer: "/home/chester.lin/reparke2e/configs/local2token.npy"
-detokenizer: "/home/chester.lin/reparke2e/configs/token2local.json"
+tokenizer: "/home/chester.lin/reparke2e/configs/local2token_512.npy"
+detokenizer: "/home/chester.lin/reparke2e/configs/token2local_512.json"
 
 ##################### Encoder #####################
 embedding_dim: 256

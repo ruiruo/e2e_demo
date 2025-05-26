@@ -186,25 +186,24 @@ def create_local2token_ndarray(m_boundaries, n_boundaries):
 
 if __name__ == "__main__":
     # Overall ranges:
-    x_min, x_max = -1, 29
-    y_min, y_max = -5, 5
+    x_min, x_max = -20, 180
+    y_min, y_max = -10, 10
 
-    # To obtain roughly 1,000 tokens in the grid while preserving the 3:1 balance,
+    # To obtain 2048 tokens in the grid,
     # note that the total number of tokens will be:
     #   (desired_cells_x + 2) * (desired_cells_y + 2)
-    # One possible choice is:
-    desired_cells_x = 53  # (55 cells on x-axis)
-    desired_cells_y = 16  # (18 cells on y-axis)
-    # Total tokens = 55 * 18 = 990 (~1,000 tokens)
+    desired_cells_x = 80
+    desired_cells_y = 30
 
     # Uniform region parameters:
-    x_uniform_left = -1
-    x_uniform_right = 15
-    x_uniform_segments = 37  # must be odd to center 0
+    x_uniform_left = -5
+    x_uniform_right = 100
+    x_uniform_segments = 60
 
-    y_uniform_left = -5
-    y_uniform_right = 5
-    y_uniform_segments = 17  # must be odd
+
+    y_uniform_left = -10
+    y_uniform_right = 10
+    y_uniform_segments = 31  # must be odd, and <= desired_cells_y + 2
 
     # Unbalanced arcsinh allocation:
     x_neg_weight = 0
@@ -230,17 +229,24 @@ if __name__ == "__main__":
     # Identify the token (cell) with center at (0,0)
     token_x = None
     token_y = None
+    # This search for (0,0) might need adjustment if boundary definitions change significantly
+    # or if a cell isn't perfectly centered at (0,0) due to segment counts.
     for i in range(len(x_boundaries) - 1):
         center_x = (x_boundaries[i] + x_boundaries[i + 1]) / 2
-        if np.isclose(center_x, 0, atol=1e-8):
+        if np.isclose(center_x, 0, atol=1e-8):  # Default atol is 1e-8
             token_x = (x_boundaries[i], x_boundaries[i + 1])
             break
 
     for j in range(len(y_boundaries) - 1):
         center_y = (y_boundaries[j] + y_boundaries[j + 1]) / 2
-        if np.isclose(center_y, 0, atol=1e-8):
+        if np.isclose(center_y, 0, atol=1e-8):  # Default atol is 1e-8
             token_y = (y_boundaries[j], y_boundaries[j + 1])
             break
+
+    if token_x is not None and token_y is not None:
+        print(f"Cell containing (0,0): X_bounds={token_x}, Y_bounds={token_y}")
+    else:
+        print("Could not find a cell perfectly centered at (0,0).")
 
     # Visualize the boundaries:
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -260,11 +266,17 @@ if __name__ == "__main__":
     # Create token map for the grid cells
     local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
 
-    print("BOS:", parallel_find_bin(np.array([[0, 0]]), x_boundaries, y_boundaries))
+    print("BOS for (0,0):",
+          parallel_find_bin(np.array([[0.0, 0.0]]), x_boundaries, y_boundaries))  # Ensure searching for 0.0
     print("local2token shape:", local2token.shape)
-    print("Total tokens:", local2token.size)
+    print("Total tokens:", local2token.size)  # This should be 2048
 
-    with open("/home/nio/reparke2e/configs/token2local_%d.json" % len(token2local), "w") as f:
+    # Ensure the paths are correct for your system
+    base_path = "/home/nio/reparke2e/configs/"  # Example base path, adjust if needed
+
+    with open(f"{base_path}token2local_{len(token2local)}.json", "w") as f:
         json.dump(token2local, f, indent=2)
 
-    np.save("/home/nio/reparke2e/configs/local2token_%d.npy" % len(token2local), local2token)
+    np.save(f"{base_path}local2token_{len(token2local)}.npy", local2token)
+    print(f"Saved token maps with {len(token2local)} tokens.")
+

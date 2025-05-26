@@ -836,18 +836,6 @@ class TrajectoryInfoParser:
 
             token_error = TrajectoryDistance(traj_with_token, raw_data)
             self.error_x_over_12.append(token_error.get_l2_distance())
-    # else:
-    #     for i in range(len(token)):
-    #         for j in range(len(token[0])):
-    #             if token[i, j] != -1:
-    #                 if raw_data[i, j, 0] < 12:
-    #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
-    #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
-    #                     self.error_x_under_12.append(token_error.get_l2_distance())
-    #                 else:
-    #                     traj_with_token = detokenize_traj_waypoints([token[i, j]], self.detokenizer)
-    #                     token_error = TrajectoryDistance(traj_with_token, [raw_data[i, j]])
-    #                     self.error_x_over_12.append(token_error.get_l2_distance())
 
 
 # TODO: eval it
@@ -904,8 +892,8 @@ if __name__ == '__main__':
     config_obj.checkpoint_dir = config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
     config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
     config_obj.local_data_save_dir = "/home/nio/"
-    config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
-    config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
+    config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token_512.npy"
+    config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local_512.json"
     config_obj.batch_size = 4
     config_obj.ar_start_epoch = 1
     config_obj.ar_warmup_epochs = 1
