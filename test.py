@@ -54,8 +54,8 @@ train_config_obj.log_dir = train_config_obj.log_dir.replace("shaoqian.li", "nio"
 train_config_obj.checkpoint_dir = train_config_obj.checkpoint_dir.replace("shaoqian.li", "nio")
 train_config_obj.checkpoint_root_dir = "/home/nio/checkpoints/"
 train_config_obj.local_data_save_dir = "/home/nio/"
-train_config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token.npy"
-train_config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local.json"
+train_config_obj.tokenizer = "/home/nio/reparke2e/configs/local2token_512.npy"
+train_config_obj.detokenizer = "/home/nio/reparke2e/configs/token2local_512.json"
 train_config_obj.batch_size = 4
 
 # Create the inference object.
