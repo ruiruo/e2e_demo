@@ -59,8 +59,8 @@ config_top_k: 10
 config_top_p: 0.5
 
 ##################### Data Process #####################
-tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token_2542.npy"
-detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local_2542.json"
+tokenizer: "/home/shaoqian.li/reparke2e/configs/local2token_2545.npy"
+detokenizer: "/home/shaoqian.li/reparke2e/configs/token2local_2545.json"
 
 ##################### Encoder #####################
 embedding_dim: 256
