@@ -44,9 +44,9 @@ check_val_every_n_epoch: 1
 epochs: 50
 learning_rate: 0.0005
 weight_decay: 0.0002
-batch_size: 128
-num_workers: 15
-max_agent: 10
+batch_size: 96
+num_workers: 10
+max_agent: 5
 ignore_eos_loss: False
 device: "cuda"
 customized_metric: True
