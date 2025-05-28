@@ -255,16 +255,17 @@ if __name__ == "__main__":
     for yb in y_boundaries:
         ax.axhline(y=yb, color='red', linestyle='--', linewidth=0.5)
 
+    # Create token map for the grid cells
+    local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
+
     ax.set_xlim(x_boundaries[0], x_boundaries[-1])
     ax.set_ylim(y_boundaries[0], y_boundaries[-1])
     ax.set_title(
         "Computed 2D Boundaries\n(x: {} cells, y: {} cells)".format(len(x_boundaries) - 1, len(y_boundaries) - 1))
     ax.set_xlabel("X axis")
     ax.set_ylabel("Y axis")
-    plt.show()
+    plt.savefig("/home/nio/reparke2e/configs/token_plot_{}.png".format(len(token2local)))
 
-    # Create token map for the grid cells
-    local2token, token2local = create_local2token_ndarray(x_boundaries, y_boundaries)
 
     print("BOS for (0,0):",
           parallel_find_bin(np.array([[0.0, 0.0]]), x_boundaries, y_boundaries))  # Ensure searching for 0.0
