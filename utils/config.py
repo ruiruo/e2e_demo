@@ -38,6 +38,7 @@ class Configuration:
     sampling_temperature: float
     config_top_k: int
     config_top_p: float
+    sample_rate: int
 
     # Basic Options
     with_pad: bool

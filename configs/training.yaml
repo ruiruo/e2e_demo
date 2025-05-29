@@ -6,6 +6,7 @@ validation_dir: "val"
 multi_agent_info: False
 simple_deduction: True
 with_pad: False
+sample_rate: 5 # 0.2s step
 max_train: 5000000
 max_val: 1000000
 experiment_name: e2e_planner
