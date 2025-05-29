@@ -73,7 +73,7 @@ tf_de_dim: 256
 tf_de_heads: 8
 tf_de_layers: 8
 ##################### Data #####################
-max_frame: 10
+max_frame: 20
 token_nums: 2545
 bos_token: 2542
 eos_token: 2543
