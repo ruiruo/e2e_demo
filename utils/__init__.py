@@ -5,7 +5,6 @@ import socket
 from envs.wrapper import OpenCVRecorder, RayFlattenWrapper, EgoStepWrapper, EgoInfoWrapper, TopologyHistoryWrapper
 from envs.core import ReplayHighwayCoreEnv
 
-
 def split_list_into_n_parts(lst, n=10):
     return [lst[i::n] for i in range(n)]
 
