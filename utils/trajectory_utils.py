@@ -373,7 +373,7 @@ class AgentFeatureParser:
         new_agent_info, agent_attr = self.process_agent_info()
 
         if self.simple_deduction:
-            new_agent_info = self._simulate_future_states(new_agent_info, self.max_frame + 1)
+            new_agent_info = self._simulate_future_states(new_agent_info, self.max_frame + 1, self.cfg.sample_rate * 0.2)
 
         # 2. Concatenate agent attributes to agent_info.
         new_agent_info = self._concatenate_agent_attributes(new_agent_info, agent_attr, self.simple_deduction)
@@ -701,13 +701,13 @@ class TrajectoryInfoParser:
                 agent_feature = data['agent_feature']
                 slice_length = ego_history.shape[0]
                 if self.cfg.with_pad:
-                    total = slice_length - 5
+                    total = max(1, slice_length - self.max_frame * self.cfg.sample_rate + 5)
                 else:
-                    total = slice_length - self.max_frame
+                    total = max(1, slice_length - self.max_frame * self.cfg.sample_rate)
                 for start_idx in range(total):
-                    end_idx = start_idx + self.max_frame
-                    ego_window = ego_history[start_idx:end_idx]
-                    agent_window = agent_feature[:, start_idx, :]
+                    end_idx = start_idx + self.max_frame * self.cfg.sample_rate
+                    ego_window = ego_history[start_idx:end_idx][::self.cfg.sample_rate]
+                    agent_window = agent_feature[:, start_idx, :][::self.cfg.sample_rate]
                     topology_history = TopologyHistory(
                         cfg=self.cfg,
                         frame_id=self.total_trajectory,
@@ -730,45 +730,27 @@ class TrajectoryInfoParser:
         Filter `ego_history_feature` (self-vehicle's historical trajectory) and `agent_feature` (features of other traffic participants)
         to obtain and process useful time segments, including:
         1. Extract data segments with large timestamp intervals (> 0.18s).
-        2. Filter out segments with short intervals, ensuring that the segment length is not less than self.max_frame.
+        2. Filter out segments with short intervals, ensuring that the segment length is not less than max_frame * sample_rate.
         3. Reverse the time order so that the most recent data is at the front.
         4. Filter out small values in self-vehicle's x, y, velocity (v) as well as heading and acceleration (acc).
-        5. Re-select continuous segments of self movement, ensuring that the segment length is not less than self.max_frame,
+        5. Re-select continuous segments of self movement, ensuring that the segment length is not less than max_frame * sample_rate,
            and apply coordinate offset processing.
 
         Returns:
         - dict: The processed `data` dictionary with updated `ego_history_feature` and `agent_feature`.
         - {} if no valid data is found.
         """
-        ego_history = data['ego_history_feature']
-        slice_start = None
-        slice_end = 0
-        for i in range(ego_history.shape[0] - 1, 0, -1):
-            time_diff = ego_history[i, 7] - ego_history[i - 1, 7]
-            if slice_start is None:
-                if time_diff > 0.18:
-                    slice_start = min(i + 1, ego_history.shape[0] - 1)
-            elif time_diff < 0.18:
-                if slice_start - i >= self.max_frame:
-                    slice_end = min(i + 1, ego_history.shape[0] - 1)
-                    break
-                slice_start = None
 
-        if slice_start is None:
-            # print("Task{self.task_index} no segment found with consecutive timestamp intervals greater than 0.2s")
-            return {}
-        slice_length = slice_start - slice_end
-        if slice_length < self.max_frame:
-            # print(f"Task{self.task_index} subarray satisfying the timestamp interval condition has fewer than {self.max_frame} elements")
-            return {}
+        timestamps = data['ego_history_feature'][:, 7]
+        ts_round = np.round(timestamps, 1)
+        tenths = np.round(ts_round * 10).astype(int)
+        mask = (tenths % 2 == 0)
 
-        ego_history = ego_history[slice_end: slice_start][::-1]
+        ego_history = data['ego_history_feature'][mask][::-1]
+        agent_feature = data['agent_feature'][:, mask, :][:, ::-1, :]
 
-        new_agent_feature = np.full((data['agent_feature'].shape[0], slice_length, data['agent_feature'].shape[2]),
-                                    fill_value=-300.)
-        for idx in range(len(data['agent_feature'])):
-            new_agent_feature[idx] = data['agent_feature'][idx][slice_end: slice_start][::-1]
-        data['agent_feature'] = new_agent_feature
+        data['ego_history_feature'] = ego_history
+        data['agent_feature'] = agent_feature
 
         # Threshold for [x, y, v]: set values with absolute value < 1e-3 to 0.
         for col in [2, 3, 5]:
@@ -784,25 +766,19 @@ class TrajectoryInfoParser:
         slice_start = None
         slice_end = ego_history.shape[0]
         for i in range(ego_history.shape[0] - 1):
-            x_diff = ego_history[i + 1, 2] - ego_history[i, 2]
+            x_diff = abs(ego_history[i + 1, 2] - ego_history[i, 2])
             if slice_start is None:
                 if x_diff > 1e-3:
                     slice_start = max(i, 0)
             elif x_diff < 1e-3:
-                if slice_start - i >= self.max_frame:
+                if slice_start - i >= self.max_frame * self.cfg.sample_rate:
                     slice_end = i
                     break
                 slice_start = None
 
         if slice_start is None:
-            # print("Task{self.task_index} no segment of continuous self movement found")
             return {}
         slice_length = slice_end - slice_start
-        if slice_length < self.max_frame:
-            # print(
-            #     f"Task{self.task_index} subarray satisfying self movement condition
-            #     has fewer than {self.max_frame} elements")
-            return {}
 
         ego_history = ego_history[slice_start: slice_end]
         pos_bias = ego_history[0, 2:4].copy()
