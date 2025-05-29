@@ -1,5 +1,5 @@
 ##################### Dataset Options #####################
-data_dir: '/home/shaoqian.li/data/reparke2e_sl/12k'
+data_dir: '/home/shaoqian.li/data/reparke2e_sl/6k'
 training_dir: "train"
 validation_dir: "val"
 multi_agent_info: False
