@@ -57,6 +57,7 @@ sampling_strategy: "sample"
 sampling_temperature: 1
 config_top_k: 10
 config_top_p: 0.5
+sample_rate: 5 # 0.2s step
 
 ##################### Data Process #####################
 tokenizer: "/home/shaoqian.li/reparke2e_pre_train/configs/local2token_2545.npy"
