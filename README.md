@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 ### 2. Data preparation
 
-* Data: example data here:  XXXX
+* Data: example data here:  /share-pnc/shaoqian.li/data/data_list.txt
 * Create tokenisation lookup tables:
 
 ```bash
