@@ -1,93 +1,111 @@
-# reParkE2E
+# Trajectory Generator
 
+一个基于 Transformer 与 拓扑编码器（topology-encoder） 的端到端轨迹生成框架demo。
+框架同时支持 监督学习（离散化航点上的 token-level 交叉熵）以及使用 近端策略优化（Proximal Policy Optimisation, PPO） 的
+on-policy 微调。
 
+---
 
-## Getting started
+## Features
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+* **轨迹离散化Token化** – 将二维航点映射到紧凑词表，使问题转化为语言模型式的序列生成。
+* **上下文感知编码器** – 将自车状态、静态地图与动态邻居信息通过可学习编码器融合。
+* **Transformer解码器** – 自回归地在已编码上下文基础上预测下一个token。
+* **额外评估指标** – L2误差、Hausdorff距离、傅里叶距离、带宽/面积等。
+* **TeacherForcing&ScheduledSampling** – 训练阶段可在强制教学和逐步放宽之间平滑切换。
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+---
 
-## Add your files
+## Quick Start
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+### 1. Installation
 
+```bash
+# create env
+conda create -n trajgen python=3.10 -y
+conda activate trajgen
+
+# install core deps
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
 ```
-cd existing_repo
-git remote add origin https://ad-gitlab.nioint.com/jo.zhou/reparke2e.git
-git branch -M main
-git push -uf origin main
+
+### 2. Data preparation
+
+* Data: example data here:  XXXX
+* Create tokenisation lookup tables:
+
+```bash
+python utils/trajectory_utils.py --build-vocab \
+       --data_dir DATA_ROOT \
+       --out_dir  vocab/
 ```
 
-## Integrate with your tools
+* Update the config file
 
-- [ ] [Set up project integrations](https://ad-gitlab.nioint.com/jo.zhou/reparke2e/-/settings/integrations)
+### 3. Supervised training
 
-## Collaborate with your team
+```bash
+python train.py --config configs/training.yaml
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### 4. PPO fine‑tuning
 
-## Test and Deploy
+```bash
+python train.py --config configs/ppo.yaml
+```
 
-Use the built-in continuous integration in GitLab.
+This uses `TrajectoryGeneratorPPOModule` and plugs in reward signals defined in
+`utils/rewards.py`.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### 5. Inference
 
-***
+```bash
+python predict.py --config configs/predict.yaml --ckpt path/to/best.ckpt
+```
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## Evaluation
 
-## Suggestions for a good README
+```bash
+python -m utils.eval \
+    --pred outputs/sample.jsonl \
+    --gt   data/val.jsonl
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+Yields metrics identical to those used during validation:
 
-## Name
-Choose a self-explaining name for your project.
+| 指标                 | 含义             |
+|--------------------|----------------|
+| `l2`               | 点对点L2距离均值（米）   |
+| `hausdorff`        | Hausdorff距离（米） |
+| `fourier`          | 傅里叶距离（米）       |
+| `strip_area`       | 轨迹覆盖带面积（m²）    |
+| `strip_width_mean` | 覆盖带平均宽度（米）     |
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+---
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Reference
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+| Module                                         | Paper                                                                                                                           | Notes                                        |
+|------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|
+| Transformer architecture & positional encoding | Vaswani et al., 2017, *Attention Is All You Need*                                                                               | Backbone & sinusoidal positions              |
+| BERT encoder                                   | Devlin et al., 2019, *BERT: Pre‑training of Deep Bidirectional Transformers for Language Understanding*                         | Bidirectional pre‑training inspiration       |
+| Autoregressive decoding / multitask            | Radford et al., 2019, *Language Models are Unsupervised Multitask Learners*                                                     | BOS→…→EOS sampling paradigm                  |
+| Conditional normalisation (FiLM)               | Pérez et al., 2018, *FiLM: Visual Reasoning with a General Conditioning Layer*                                                  | Dynamic feature scaling/shifting             |
+| Tokenised trajectories                         | Lee et al., 2024, *TGT: Tokenized Generative Trajectory Prediction*                                                             | Continuous → discrete waypoint tokens        |
+| Trajectory Transformer                         | Sun et al., 2022, *Trajectory Transformer for Autonomous Driving*                                                               | Social attention & autoregressive generation |
+| Context & goal encoder                         | Shah et al., 2024, *ViNT: A Foundation Model for Visual Navigation*                                                             | Vision/map/goal fusion                       |
+| Scaling laws                                   | Kaplan et al., 2020, *Scaling Laws for Neural Language Models*                                                                  | Predictability across model/data/compute     |
+| Top‑p / Top‑k sampling                         | Holtzman et al., 2020, *The Curious Case of Neural Text Degeneration*; Fan et al., 2018, *Hierarchical Neural Story Generation* | Sampling truncation/filtration               |
+| Scheduled sampling                             | Bengio et al., 2015, *Scheduled Sampling for Sequence‑to‑Sequence Learning*                                                     | Gradual teacher‑forcing annealing            |
+| Fourier trajectory distance                    | Lamb et al., 2019, *Fourier Distance for Trajectories*                                                                          | Frequency‑domain similarity metric           |
+| Simulator — highway‑env                        | Leurent, 2019, *An Environment for Autonomous Driving Decision‑Making*                                                          | Gym‑based driving environment                |
+| PPO optimisation                               | Schulman et al., 2017, *Proximal Policy Optimization Algorithms*                                                                | On‑policy updates                            |
+| Distributed RL framework                       | Liang & Moritz et al., 2018, *RLlib: Abstractions for Distributed Reinforcement Learning*                                       | Scalable RL on Ray                           |
+| Soft Actor‑Critic                              | Haarnoja et al., 2018, *Soft Actor‑Critic: Off‑Policy Maximum‑Entropy RL*                                                       | Off‑policy actor‑critic                      |
+| Prioritised Experience Replay                  | Schaul et al., 2016, *Prioritized Experience Replay*                                                                            | TD‑error‑based sampling                      |
+| Hindsight Experience Replay                    | Andrychowicz et al., 2017, *Hindsight Experience Replay*                                                                        | Goal relabelling                             |
+| Decision Transformer                           | Chen et al., 2021, *Decision Transformer: Offline RL with Sequence Models*                                                      | Return‑to‑go conditioning                    |
+| Gymnasium interface                            | Brockman et al., 2016, *The OpenAI Gym*                                                                                         | Standard RL API                              |

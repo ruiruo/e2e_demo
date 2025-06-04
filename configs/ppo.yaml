@@ -1,0 +1,29 @@
+hyper_parameters:
+  framework: torch
+  gamma: 0.99
+  lambda: 0.95
+  clip_param: 0.2
+  lr: 0.0003
+  train_batch_size: 512
+  sgd_minibatch_size: 128
+  num_sgd_iter: 30
+  num_gpus: 1
+  num_cpus_per_worker: 1
+  num_gpus_per_worker: 0.01
+  num_envs_per_worker: 4
+  num_workers: 6
+  evaluation_interval: 10
+  evaluation_num_episodes: 100
+  evaluation_config:
+    explore: false
+
+log:
+  log_base: "/home/nio/data/reparke2e/logging"
+  ckpt_base: "/home/nio/data/reparke2e/checkpoints"
+  max_time: 1080000
+  max_run: 500000
+  verbose_start: 10
+  print_every: 50
+  save_every: 500
+  json_save_every: 10
+

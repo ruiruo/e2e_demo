@@ -1,0 +1,2 @@
+model_ckpt_path: "/home/nio/0.1.ckpt"
+training_config: "training_shaoqian1"

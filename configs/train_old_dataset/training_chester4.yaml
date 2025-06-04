@@ -1,0 +1,82 @@
+##################### Dataset Options #####################
+data_dir: '/home/chester.lin/data/'
+# data_dir: '/home/nio/data/e2e_example/'
+training_dir: "train"
+validation_dir: "val"
+multi_agent_info: False
+simple_deduction: True
+with_pad: False
+max_train: 5000000
+max_val: 1000000
+experiment_name: e2e_planner_30_frame
+
+##################### Dataset Generate Options #####################
+tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
+tfrecord_files_list: "/share-pnc/shaoqian.li/data/data_list.txt" # same_navi_1217_4w: 143297340
+bucket: ad-cn-hfidc-pnc-data3
+access_key: 8fd6a2c297574ba8
+secret_key: a6089ccf0e85449a92c6f1b70dec79d3
+local_data_save_dir: "/home/shaoqian.li/data/raw_data"
+save_tf_to_local_tmp_path: "/tmp/random_tmp"
+save_data_num_per: 35
+case_size: 50000
+
+# road info
+max_lane_num: 50
+max_node_num_per_lane: 25
+vector_graph_feature_fea_dim: [
+  start_x,
+  start_y,
+  end_x,
+  end_y,
+  lane_id, # no use
+  lane_width,
+  left_cross_able, # no use
+  right_cross_able, # no use
+  speed_limit,
+]
+##################### Basic Options #####################
+data_mode: "topology"
+num_gpus: 1
+cuda_device_index: "0"
+log_root_dir: '/home/chester.lin/log/'
+checkpoint_root_dir: '/home/chester.lin/checkpoints/'
+log_every_n_steps: 100
+check_val_every_n_epoch: 1
+epochs: 500
+learning_rate: 0.0001
+weight_decay: 0.00002
+batch_size: 64
+num_workers: 15
+max_agent: 5
+ignore_eos_loss: True
+device: "cuda"
+customized_metric: True
+ar_start_epoch: 10
+ar_warmup_epochs: 500
+max_grad_norm: 2.0
+
+##################### Data Process #####################
+tokenizer: "/home/chester.lin/reparke2e/configs/local2token_512.npy"
+detokenizer: "/home/chester.lin/reparke2e/configs/token2local_512.json"
+
+##################### Encoder #####################
+embedding_dim: 256
+num_topy_layers: 2
+##################### Decoder #####################
+item_number: 8
+dropout: 0.5
+tf_de_dim: 256
+tf_de_heads: 8
+tf_de_layers: 8
+##################### Data #####################
+max_frame: 30
+token_nums: 510
+bos_token: 507
+eos_token: 508
+pad_token: 509
+x_boundaries:
+  [ -1.0, -0.29638671875, 0.29638671875, 0.77783203125, 1.3701171875, 1.962890625, 2.5546875, 3.1484375, 3.740234375, 4.33203125, 4.92578125, 5.51953125, 6.109375, 6.703125, 7.296875, 7.890625, 8.484375, 9.0703125, 9.6640625, 10.2578125, 10.8515625, 11.4453125, 12.0390625, 12.6328125, 13.21875, 13.8125, 14.40625, 15.0, 15.8671875, 16.78125, 17.734375, 18.734375, 19.796875, 20.921875, 22.09375, 23.34375, 24.640625, 26.015625, 27.46875, 29.0 ]
+
+y_boundaries:
+  [ -5.0, -4.0, -3.2734375, -2.544921875, -1.818359375, -1.0908203125, -0.363525390625, 0.363525390625, 1.0908203125, 1.818359375, 2.544921875, 3.2734375, 4.0, 5.0 ]

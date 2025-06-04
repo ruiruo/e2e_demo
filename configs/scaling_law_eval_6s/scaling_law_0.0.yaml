@@ -1,0 +1,85 @@
+##################### Dataset Options #####################
+data_dir: '/home/shaoqian.li/data/reparke2e_sl/6k'
+training_dir: "train"
+validation_dir: "val"
+multi_agent_info: False
+simple_deduction: True
+with_pad: True
+max_train: 5000000
+max_val: 1000000
+experiment_name: e2e_planner_scaling_law_6s
+
+##################### Dataset Generate Options #####################
+tfrecord_niofs_path: "/ad-cn-hfidc-pnc-data3/regressions-training/174886143" #  same_navi_1127_4w: 128682083
+bucket: ad-cn-hfidc-pnc-data3
+access_key: 8fd6a2c297574ba8
+secret_key: a6089ccf0e85449a92c6f1b70dec79d3
+local_data_save_dir: "/home/shaoqian.li/data/raw_data"
+save_tf_to_local_tmp_path: "/tmp/random_tmp"
+save_data_num_per: 35
+case_size: 50000
+
+# road info
+max_lane_num: 50
+max_node_num_per_lane: 25
+vector_graph_feature_fea_dim: [
+  start_x,
+  start_y,
+  end_x,
+  end_y,
+  lane_id, # no use
+  lane_width,
+  left_cross_able, # no use
+  right_cross_able, # no use
+  speed_limit,
+]
+##################### Basic Options #####################
+data_mode: "topology"
+num_gpus: 1
+cuda_device_index: "0"
+log_root_dir: '/home/shaoqian.li/log/'
+checkpoint_root_dir: '/home/shaoqian.li/checkpoints/'
+log_every_n_steps: 500
+check_val_every_n_epoch: 1
+epochs: 50
+learning_rate: 0.0005
+weight_decay: 0.0002
+batch_size: 96
+num_workers: 10
+max_agent: 5
+ignore_eos_loss: False
+device: "cuda"
+customized_metric: True
+ar_start_epoch: 1
+ar_warmup_epochs: 50
+max_grad_norm: 2.0
+sampling_strategy: "sample"
+sampling_temperature: 1
+config_top_k: 10
+config_top_p: 0.5
+sample_rate: 5 # 0.2s step
+
+##################### Data Process #####################
+tokenizer: "/home/shaoqian.li/reparke2e_pre_train/configs/local2token_2545.npy"
+detokenizer: "/home/shaoqian.li/reparke2e_pre_train/configs/token2local_2545.json"
+
+##################### Encoder #####################
+embedding_dim: 256
+num_topy_layers: 1
+##################### Decoder #####################
+item_number: 8
+dropout: 0.8
+tf_de_dim: 256
+tf_de_heads: 8
+tf_de_layers: 8
+##################### Data #####################
+max_frame: 20
+token_nums: 2545
+bos_token: 2542
+eos_token: 2543
+pad_token: 2544
+x_boundaries:
+ [-5.0, -3.25, -0.875, 0.875, 2.0, 3.75, 5.5, 7.25, 9.0, 10.75, 12.5, 14.25, 16.0, 17.75, 19.5, 21.25, 23.0, 24.75, 26.5, 28.25, 30.0, 31.75, 33.5, 35.25, 37.0, 38.75, 40.5, 42.25, 44.0, 45.75, 47.5, 49.25, 51.0, 52.75, 54.5, 56.25, 58.0, 59.75, 61.5, 63.25, 65.0, 66.75, 68.5, 70.25, 72.0, 73.75, 75.5, 77.25, 79.0, 80.75, 82.5, 84.25, 86.0, 87.75, 89.5, 91.25, 93.0, 94.75, 96.5, 98.25, 100.0, 102.6875, 105.5, 108.375, 111.3125, 114.3125, 117.375, 120.5625, 123.8125, 127.1875, 130.625, 134.125, 137.75, 141.5, 145.375, 149.25, 153.375, 157.5, 161.75, 166.125, 170.625, 175.25, 180.0]
+
+y_boundaries:
+ [-10.0, -9.3515625, -8.7109375, -8.0625, -7.41796875, -6.7734375, -6.12890625, -5.484375, -4.83984375, -4.1953125, -3.548828125, -2.90234375, -2.2578125, -1.61328125, -0.9677734375, -0.322509765625, 0.322509765625, 0.9677734375, 1.61328125, 2.2578125, 2.90234375, 3.548828125, 4.1953125, 4.83984375, 5.484375, 6.12890625, 6.7734375, 7.41796875, 8.0625, 8.7109375, 9.3515625, 10.0]
