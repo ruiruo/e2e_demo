@@ -94,17 +94,28 @@ class BackgroundEncoder(nn.Module):
             num_layers=num_layers,
         )
 
-        self.fft_conv1d_1 = nn.Conv1d(
-            in_channels=pos_embed_dim,
-            out_channels=pos_embed_dim,
-            kernel_size=1
+        self.conv1d_reduce = nn.Conv1d(in_channels=pos_embed_dim,
+                                       out_channels=64,
+                                       kernel_size=1)
+        self.conv1d_1x1 = nn.Conv1d(in_channels=64,
+                                    out_channels=64,
+                                    kernel_size=1)
+        self.conv1d_lowcost = nn.Conv1d(in_channels=64,
+                                        out_channels=64,
+                                        kernel_size=3,
+                                        padding=1,
+                                        groups=64)
+        self.dim_recovery = nn.Linear(64, pos_embed_dim)
+
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=self.cfg.embedding_dim,
+            nhead=self.cfg.tf_de_heads,
+            dim_feedforward=self.cfg.tf_de_dim,
+            dropout=self.cfg.dropout,
+            activation='relu'
         )
-        self.fft_conv1d_2 = nn.Conv1d(
-            in_channels=pos_embed_dim,
-            out_channels=pos_embed_dim,
-            kernel_size=3,
-            padding=1
-        )
+        self.trajectory_gen = nn.TransformerDecoder(decoder_layer, num_layers=1)
+        self.output_norm = nn.LayerNorm(self.cfg.embedding_dim)
 
     def forward(self, agent_emb, agent_feature, goal_emb, agent_mask=None):
         """
@@ -136,13 +147,84 @@ class BackgroundEncoder(nn.Module):
             shifted_agent_emb = shifted_agent_emb.reshape(bz, sl, -1)
 
             # ============ implicit_fft ============
-            #  -> (bz*t*sl, d_pos)
-            x = shifted_agent_emb.permute(0, 2, 1)
-            x = self.fft_conv1d_1(x)
-            x = self.fft_conv1d_2(x)
-            shifted_agent_emb = x.permute(0, 2, 1)
-            t = self.cfg.max_frame + 1
-            shifted_agent_emb = shifted_agent_emb.unsqueeze(1).repeat(1, t, 1, 1)
+            # x = shifted_agent_emb.permute(0, 2, 1)
+            # x1 = torch.tanh(self.conv1d_reduce(x))
+            # x2 = torch.tanh(self.conv1d_1x1(x1))
+            # x = torch.tanh(self.conv1d_lowcost(x1 + x2))
+            # x = torch.tanh(self.dim_recovery(x))
+            # shifted = x.permute(0, 2, 1)
+            #
+            # batch = sl * bz
+            # #  -> (t, bz*sl, d_pos)
+            # T = self.cfg.max_frame + 1
+            # mem = shifted.reshape(batch, d_pos).unsqueeze(0)
+            #
+            # results = [mem[0]]
+            # full_mask = torch.triu(torch.ones(T, T, device=shifted.device, dtype=torch.bool), 1)
+            # for step in range(1, T):
+            #     mask_t = full_mask[:step, :step]
+            #     tgt = torch.stack(results, dim=0)  # (t, batch, d_pos)
+            #     out = self.trajectory_gen(tgt, mem, tgt_mask=mask_t)
+            #     out = self.output_norm(out)
+            #     results.append(out[-1])
+            # generated = torch.stack(results, dim=0)
+            #
+            # shifted_agent_emb = generated.reshape(T, bz, sl, d_pos).permute(1, 0, 2, 3)
+
+            # ============ (2) “implicit FFT” 部分改为显式 iFFT ============
+
+            # 2.1 先把 real tensor 转为 complex（假设你的频域信息是实数序列）
+            #     如果你已经有复数输入，这一步可以跳过，不要再 to(complex) 一次
+            shifted_complex = shifted_agent_emb.to(torch.complex64)  # (bz, sl, d_pos) -> complex
+
+            # 2.2 在 dim=1（长度为 sl 的频率维度）上做一维 iFFT
+            #     ifft 返回形状不变，但 dtype 为 complex64
+            time_domain_complex = torch.fft.ifft(shifted_complex, n=sl, dim=1)  # (bz, sl, d_pos)
+
+            # 2.3 取实部作为时域特征，丢弃虚部
+            time_domain = time_domain_complex.real  # (bz, sl, d_pos), dtype float32
+
+            # 2.4 如果你想做额外的非线性或正则化，可在这里插入，
+            #     比如再加一次 tanh 或者 LayerNorm。示例不加，直接进入下一步
+
+            # ============ (3) 自回归生成 (length = max_frame + 1) ============
+            # 将时域特征按 batch 展平，送入 TransformerDecoder 生成 T 步
+            # 先 reshape 到 (batch, d_pos)
+            batch = bz * sl
+            mem = time_domain.reshape(batch, d_pos).unsqueeze(0)  # -> (1, batch, d_pos)
+
+            T = self.cfg.max_frame + 1
+            results = [mem[0]]
+            full_mask = torch.triu(torch.ones(T, T, dtype=torch.bool, device=shifted_agent_emb.device), diagonal=1)
+
+            # Autoregressive 循环
+            for step in range(1, T):
+                # 3.1 把已经生成的前 step 步拼成 tgt: (step, batch, d_pos)
+                tgt = torch.stack(results, dim=0)
+
+                # 3.2 拿对应尺寸的因果 mask: (step, step)
+                tgt_mask = full_mask[:step, :step]
+
+                # 3.3 TransformerDecoder 得到 (step, batch, d_pos)
+                out = self.trajectory_gen(tgt, mem, tgt_mask=tgt_mask)  # out: complex? No, decoder 输出是 real
+                out = self.output_norm(out)  # 归一化
+
+                # 3.4 拿最后一个 time step 隐状态；若要做 projection 可用 self.proj
+                last_hidden = out[-1]  # shape=(batch, d_pos)
+                # 如果要投影回 embedding space，可以：
+                # next_hidden = self.proj(last_hidden)
+                next_hidden = last_hidden
+
+                # 3.5 把 next_hidden 放进 results，作为第 step 步的输出
+                results.append(next_hidden)
+
+            # 把 results 中的 T 个 (batch, d_pos) 堆起来： (T, batch, d_pos)
+            generated = torch.stack(results, dim=0)
+
+            # ============ (4) reshape 回 (bz, T, sl, d_pos) ============
+            # generated: (T, batch, d_pos) 其中 batch = bz*sl
+            shifted_agent_emb = generated.view(T, bz, sl, d_pos)  # -> (T, bz, sl, d_pos)
+            shifted_agent_emb = shifted_agent_emb.permute(1, 0, 2, 3)
 
         t = agent_emb.shape[1] if len(agent_emb.shape) == 4 else self.cfg.max_frame + 1
         # ============ (3) goal as a extra agent ============

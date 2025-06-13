@@ -1,3 +1,5 @@
+from torch import nn
+
 from loss.traj_point_loss import TokenTrajWayPointLoss
 from model.trajectory_generator_model import TrajectoryGenerator
 from utils.config import Configuration

@@ -5,6 +5,8 @@ from utils.common import setup_callbacks
 from dataset.dataloader import TrajectoryDataloaderModule
 from model.trajectory_generator_train import TrajectoryTrainingModule
 import argparse
+import torch
+torch.autograd.set_detect_anomaly(True)
 
 
 def main(config_obj):
@@ -24,7 +26,7 @@ def main(config_obj):
     mlflow_logger = MLFlowLogger(
         experiment_name="e2e_planner",
         run_name=run_name,
-        tracking_uri="http://172.21.191.16:9999"
+        tracking_uri="http://0.0.0.0:9999"
     )
 
     trainer = Trainer(
